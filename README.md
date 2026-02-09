@@ -1,16 +1,15 @@
 # utsutsu-code (うつつこーど)
 
 Claude Code向けAIコーディングアシスタント向けのデスクトップマスコットアプリです。
-
-<a href="https://gyazo.com/3fb61b097667b789bdb3aa017069ba9c"><img src="https://i.gyazo.com/3fb61b097667b789bdb3aa017069ba9c.gif" alt="Image from Gyazo" width="600"/></a>
+<img width="790" height="481" alt="tsukuyomi" src="https://github.com/user-attachments/assets/fea2be1c-d3c2-4c3c-9a7c-f0ae8360da08" />
 
 Claude CodeのSKILLベースで実行しています。
-apple silicon Macのみ対応です。
+デフォルトではつくよみちゃんが起動します。apple silicon Macのみ対応です。
 
 ## クイックスタート
 
 ### 前提条件
-
+- [COEIROINKv2](https://coeiroink.com/download)
 - Flutter SDK (3.10+)
 - macOS
 - Python3
@@ -22,6 +21,7 @@ Claude Codeで `/tsukuyomi-setup` を実行すると、前提条件チェック�
 ```
 /tsukuyomi-setup
 ```
+
 マスコットのみ起動する場合は
 
 ```
