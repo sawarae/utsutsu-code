@@ -1,6 +1,11 @@
 # utsutsu-code (うつつこーど)
 
-apple silicon Mac向けAIコーディングアシスタント向けのデスクトップマスコットです。
+Claude Code向けAIコーディングアシスタント向けのデスクトップマスコットアプリです。
+
+<a href="https://gyazo.com/3fb61b097667b789bdb3aa017069ba9c"><img src="https://i.gyazo.com/3fb61b097667b789bdb3aa017069ba9c.gif" alt="Image from Gyazo" width="600"/></a>
+
+Claude CodeのSKILLベースで実行しています。
+apple silicon Macのみ対応です。
 
 ## クイックスタート
 
@@ -17,6 +22,12 @@ Claude Codeで `/tsukuyomi-setup` を実行すると、前提条件チェック�
 ```
 /tsukuyomi-setup
 ```
+マスコットのみ起動する場合は
+
+```
+/mascot-run
+```
+です。
 
 #### 手動で行う場合:
 
