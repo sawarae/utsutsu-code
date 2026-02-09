@@ -3,6 +3,7 @@
 
 [model]
 name = "Blend Shape Example"
+file = "tsukuyomi_blend_shape.inp"
 idle_emotion = "Gentle"
 
 [camera]

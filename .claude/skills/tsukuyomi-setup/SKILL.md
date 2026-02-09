@@ -144,7 +144,7 @@ python3 ~/.claude/hooks/mascot_tts.py --emotion Gentle "グローバルフック
 
 utsutsu2d モデル (.inp) が既にある場合はこのステップをスキップする:
 ```bash
-ls mascot/assets/models/blend_shape/model.inp 2>/dev/null || ls mascot/assets/models/parts/model.inp 2>/dev/null
+ls mascot/assets/models/blend_shape/*.inp 2>/dev/null || ls mascot/assets/models/parts/*.inp 2>/dev/null
 ```
 
 .inp が無い場合のみ、フォールバック用の口パク画像をダウンロードする:
@@ -160,11 +160,11 @@ cd mascot && make setup-fallback
 cd mascot && make setup-models
 ```
 
-utsutsu2d モデルファイルがある場合:
+utsutsu2d モデルファイルがある場合（リネーム不要、`emotions.toml` の `[model] file` でファイル名を指定済み）:
 ```bash
-cp /path/to/tsukuyomi_blend_shape.inp mascot/assets/models/blend_shape/model.inp
+cp /path/to/tsukuyomi_blend_shape.inp mascot/assets/models/blend_shape/
 # または
-cp /path/to/tsukuyomi_parts.inp mascot/assets/models/parts/model.inp
+cp /path/to/tsukuyomi_parts.inp mascot/assets/models/parts/
 ```
 
 ### Step 6: TTS テスト

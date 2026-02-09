@@ -4,10 +4,9 @@ setup: setup-models setup-fallback
 
 setup-models:
 	mkdir -p assets/models/blend_shape assets/models/parts
-	cp config/examples/blend_shape.toml assets/models/blend_shape/emotions.toml
-	cp config/examples/parts.toml assets/models/parts/emotions.toml
+	cp -n config/examples/blend_shape.toml assets/models/blend_shape/emotions.toml 2>/dev/null || true
+	cp -n config/examples/parts.toml assets/models/parts/emotions.toml 2>/dev/null || true
 	gh release download v0.01 --repo sawarae/utsutsu2d --dir assets/models/blend_shape --pattern '*.inp' --clobber
-	@mv -f assets/models/blend_shape/tsukuyomi_blend_shape.inp assets/models/blend_shape/model.inp 2>/dev/null || true
 
 setup-fallback:
 	mkdir -p assets/fallback
@@ -26,8 +25,8 @@ clean-signal:
 	@echo "Removed stale signal files"
 
 clean-assets:
-	rm -f assets/models/blend_shape/model.inp
-	rm -f assets/models/parts/model.inp
+	rm -f assets/models/blend_shape/*.inp
+	rm -f assets/models/parts/*.inp
 	rm -f assets/fallback/*.png
 	@echo "Removed downloaded assets (run 'make setup' to re-download)"
 

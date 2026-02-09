@@ -10,10 +10,9 @@ Claude CodeのSKILLベースで実行しています。
 
 ### 前提条件
 - [COEIROINKv2](https://coeiroink.com/download)
-- Flutter SDK (3.10+)
 - macOS または Windows
 - Python3
-- (Windows) Visual Studio (C++ デスクトップ開発ワークロード)
+- Flutter SDK (3.10+) (mac)
 
 ### セットアップ
 
@@ -35,9 +34,31 @@ Claude Codeで `/tsukuyomi-setup` を実行すると、前提条件チェック�
 ```bash
 cd mascot
 flutter pub get
-make setup          # モデル + フォールバック画像のダウンロード
+make setup          # モデル + フォールバック画像のダウンロード (gh CLI が必要)
 flutter run -d macos    # macOS
-flutter run -d windows  # Windows
+```
+
+`make` や `gh` CLI がない環境では、以下から手動でダウンロードしてください:
+
+#### windows
+1. **モデルファイル**: [utsutsu2d v0.01](https://github.com/sawarae/utsutsu2d/releases/tag/v0.01) から `tsukuyomi_blend_shape.inp` をダウンロード → `mascot/assets/models/blend_shape/` に配置
+
+#### ビルド済み exe を使う場合:
+
+```bash
+
+# exe と同階層の data/models/ にモデルを配置
+# build/windows/x64/runner/Release/
+#   ├── mascot.exe
+#   └── data/models/blend_shape/
+#       ├── tsukuyomi_blend_shape.inp
+#       └── emotions.toml
+```
+
+引数でパスを上書きすることもできます:
+
+```bash
+mascot.exe --models-dir C:\path\to\models --model blend_shape --signal-dir C:\path\to\signals
 ```
 
 その後、.claudeディレクトリの内容を開発用のプロジェクト内にコピーしてください。

@@ -4,6 +4,7 @@ import 'toml_parser.dart';
 
 class ModelConfig {
   final String modelDirPath;
+  final String modelFile;
   final String name;
   final String idleEmotion;
   final double cameraZoom;
@@ -17,6 +18,7 @@ class ModelConfig {
 
   const ModelConfig._({
     required this.modelDirPath,
+    required this.modelFile,
     required this.name,
     required this.idleEmotion,
     required this.cameraZoom,
@@ -70,6 +72,7 @@ class ModelConfig {
     // [model] section
     final model = toml['model'] as Map<String, dynamic>? ?? {};
     final name = (model['name'] as String?) ?? 'Unknown';
+    final modelFile = (model['file'] as String?) ?? 'model.inp';
     final idleEmotion = (model['idle_emotion'] as String?) ?? 'Gentle';
 
     // [camera] section
@@ -113,6 +116,7 @@ class ModelConfig {
 
     return ModelConfig._(
       modelDirPath: dirPath,
+      modelFile: modelFile,
       name: name,
       idleEmotion: idleEmotion,
       cameraZoom: zoom,
@@ -151,8 +155,8 @@ class ModelConfig {
     return defaultParameters[mouthParam] ?? 0.0;
   }
 
-  /// Path to the model.inp file in the model directory.
-  String get modelFilePath => '$modelDirPath/model.inp';
+  /// Path to the model file in the model directory.
+  String get modelFilePath => '$modelDirPath/$modelFile';
 
   @override
   bool operator ==(Object other) =>
