@@ -243,6 +243,23 @@ cat ~/.claude/settings.json
 - `timeout: 5000` を必ず設定する（TTSがClaude Codeをブロックしないように）
 - タイムアウト内訳: 可用性チェック(1秒) + 音声合成(4秒)。再生はバックグラウンド
 
+### Step 9: グローバル CLAUDE.md の設定
+
+`~/.claude/CLAUDE.md` にTTS指示が無いと、Claude Codeが作業開始・完了時にマスコットを呼ばない。
+
+確認:
+```bash
+grep -q "mascot_tts.py" ~/.claude/CLAUDE.md 2>/dev/null && echo "OK" || echo "NOT_FOUND"
+```
+
+無い場合、以下の内容を `~/.claude/CLAUDE.md` に追記するようユーザーに案内する:
+
+```
++ 作業開始時と作業完了時に `python3 ~/.claude/hooks/mascot_tts.py --emotion KEY "要約(30文字以内)"` でつくよみちゃんに読み上げさせる。感情キーは `mascot/emotions.toml` を参照（Gentle=通常, Joy=成功, Blush=照れ, Trouble=エラー, Singing=お祝い）。例: 開始時 `python3 ~/.claude/hooks/mascot_tts.py --emotion Gentle "透過の修正を始めます"` 、完了時 `python3 ~/.claude/hooks/mascot_tts.py --emotion Joy "コミット完了しました"` 。COEIROINK v2未起動時はosascript通知にフォールバック。要約にアルファベットは使わず、日本語かカタカナ英語で書く（例: commit→コミット、README→リードミー）
+```
+
+**重要:** `~/.claude/CLAUDE.md` はユーザーのプライベート設定なので、勝手に書き換えず「この内容を追記してください」と案内する。
+
 ## トラブルシューティング
 
 1. **COEIROINK v2 が起動していない**

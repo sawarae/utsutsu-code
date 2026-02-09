@@ -118,6 +118,19 @@ ls mascot/hooks/tts_config.toml 2>/dev/null && echo "EXISTS" || echo "CLEAN"
 rm -f mascot/hooks/tts_config.toml
 ```
 
+### Step 7: グローバル CLAUDE.md のTTS設定削除
+
+`~/.claude/CLAUDE.md` にTTS指示が残っていると、フック削除後もClaude Codeがマスコットを呼ぼうとしてエラーになる。
+
+確認:
+```bash
+grep -q "mascot_tts.py" ~/.claude/CLAUDE.md 2>/dev/null && echo "HAS_TTS_CONFIG" || echo "CLEAN"
+```
+
+残っている場合 → ユーザーに「`~/.claude/CLAUDE.md` にTTS設定が残っています。`mascot_tts.py` を含む行を削除してください」と案内する。
+
+**重要:** `~/.claude/CLAUDE.md` はユーザーのプライベート設定なので、勝手に書き換えず案内のみ行う。再セットアップ時は `/tsukuyomi-setup` の Step 9 で再追記を案内する。
+
 ## Makefile ターゲット
 
 `mascot/Makefile` にクリーンアップターゲットがある。スキル実行時はこれらを使う:
