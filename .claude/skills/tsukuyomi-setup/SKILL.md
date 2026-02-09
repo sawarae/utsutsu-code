@@ -18,6 +18,36 @@ COEIROINK v2 エンジンを使用したつくよみちゃんTTSのセットア�
 
 ## 実行手順
 
+### Step 0: 前提条件チェック
+
+各ツールがインストールされているか確認する。見つからないものがあれば、ユーザーに「インストールしていますか？」と確認してから次に進む。
+
+**Python 3 チェック:**
+```bash
+python3 --version 2>/dev/null && echo "OK" || echo "NOT_FOUND"
+```
+見つからない場合 → ユーザーに「Python 3 がインストールされていないようです。インストールしていますか？」と聞く。
+
+**Flutter チェック:**
+```bash
+flutter --version 2>/dev/null && echo "OK" || echo "NOT_FOUND"
+```
+見つからない場合 → ユーザーに「Flutter SDK がインストールされていないようです。インストールしていますか？（マスコットアプリのビルドに必要です）」と聞く。
+
+**COEIROINK v2 チェック:**
+```bash
+curl -s --connect-timeout 2 http://localhost:50032/v1/speakers > /dev/null 2>&1 \
+  && echo "OK" || echo "NOT_FOUND"
+```
+見つからない場合 → ユーザーに「COEIROINK v2 が起動していないようです。インストールしていますか？」と聞く。
+
+**判定ルール:**
+- Python 3 が無い場合: TTSもマスコットも動かないため、インストールを案内して中断
+- Flutter が無い場合: マスコットアプリのビルド(Step 7)をスキップ可能。TTS部分のみセットアップを続行するか聞く
+- COEIROINK v2 が無い/未起動の場合: インストール済みなら起動を促す。未インストールなら https://coeiroink.com からダウンロードを案内
+
+すべての前提条件が揃っていることを確認してから Step 1 に進む。
+
 ### Step 1: COEIROINK v2 状態確認
 
 ```bash
@@ -143,7 +173,7 @@ python3 mascot/hooks/mascot_tts.py --emotion Joy "マスコット動いてるよ
         "hooks": [
           {
             "type": "command",
-            "command": "python3 mascot/hooks/mascot_tts.py --emotion Joy \\\"タスク完了しました\\\""
+            "command": "python3 ~/.claude/hooks/mascot_tts.py --emotion Joy \\\"タスク完了しました\\\""
           }
         ]
       }
