@@ -49,7 +49,7 @@ mascot/assets/models/
 mascot/assets/fallback/
 
 # TTS user config
-mascot/hooks/tts_config.toml
+.claude/hooks/tts_config.toml
 
 # CocoaPods
 mascot/macos/Pods/

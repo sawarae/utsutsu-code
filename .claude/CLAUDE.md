@@ -49,7 +49,7 @@ Desktop mascot with lip-sync animation for AI coding assistants.
 
 | リポジトリ（正） | グローバル（リンク） |
 |------------------|---------------------|
-| `mascot/hooks/mascot_tts.py` | `~/.claude/hooks/mascot_tts.py` |
+| `.claude/hooks/mascot_tts.py` | `~/.claude/hooks/mascot_tts.py` |
 | `.claude/skills/*` | `~/.claude/skills/*` |
 
 セットアップ: `/tsukuyomi-setup` / クリーンアップ: `/tsukuyomi-cleanup`

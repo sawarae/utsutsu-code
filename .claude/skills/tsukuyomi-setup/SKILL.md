@@ -99,7 +99,7 @@ if not found:
 ### Step 3: TTS config 設定
 
 ```bash
-cat > mascot/hooks/tts_config.toml << 'TOML'
+cat > .claude/hooks/tts_config.toml << 'TOML'
 # Tsukuyomi via COEIROINK v2
 engine = "coeiroink"
 speaker_name = "つくよみ"
@@ -116,9 +116,9 @@ TOML
 ```bash
 mkdir -p ~/.claude/hooks ~/.claude/skills
 # フック
-ln -sf "$(pwd)/mascot/hooks/mascot_tts.py" ~/.claude/hooks/mascot_tts.py
-ln -sf "$(pwd)/mascot/hooks/tts_config.toml" ~/.claude/hooks/tts_config.toml 2>/dev/null || \
-  cp mascot/hooks/tts_config.toml ~/.claude/hooks/tts_config.toml
+ln -sf "$(pwd)/.claude/hooks/mascot_tts.py" ~/.claude/hooks/mascot_tts.py
+ln -sf "$(pwd)/.claude/hooks/tts_config.toml" ~/.claude/hooks/tts_config.toml 2>/dev/null || \
+  cp .claude/hooks/tts_config.toml ~/.claude/hooks/tts_config.toml
 # スキル
 for skill in tsukuyomi-setup tsukuyomi-cleanup tts tts-debug; do
   ln -sf "$(pwd)/.claude/skills/$skill" ~/.claude/skills/$skill
@@ -130,8 +130,8 @@ done
 リポジトリに依存しない独立したコピーを作成する（リポジトリを移動/削除しても動作する）:
 ```bash
 mkdir -p ~/.claude/hooks
-cp mascot/hooks/mascot_tts.py ~/.claude/hooks/mascot_tts.py
-cp mascot/hooks/tts_config.toml ~/.claude/hooks/tts_config.toml 2>/dev/null || true
+cp .claude/hooks/mascot_tts.py ~/.claude/hooks/mascot_tts.py
+cp .claude/hooks/tts_config.toml ~/.claude/hooks/tts_config.toml 2>/dev/null || true
 # スキルはコピー不要（プロジェクト内の .claude/skills/ がそのまま使われる）
 ```
 
@@ -171,9 +171,9 @@ cp /path/to/tsukuyomi_parts.inp mascot/assets/models/parts/model.inp
 
 ```bash
 # プロジェクトのディスパッチャ経由
-python3 mascot/hooks/mascot_tts.py --emotion Gentle "つくよみちゃんのテストです"
-python3 mascot/hooks/mascot_tts.py --emotion Joy "テスト成功だよ"
-python3 mascot/hooks/mascot_tts.py --emotion Trouble "テスト失敗だよ"
+python3 .claude/hooks/mascot_tts.py --emotion Gentle "つくよみちゃんのテストです"
+python3 .claude/hooks/mascot_tts.py --emotion Joy "テスト成功だよ"
+python3 .claude/hooks/mascot_tts.py --emotion Trouble "テスト失敗だよ"
 
 # グローバルhook経由
 python3 ~/.claude/hooks/mascot_tts.py --emotion Gentle "グローバルフックのテスト"
@@ -192,7 +192,7 @@ cd mascot && flutter run -d macos
 
 アプリが起動したら、別ターミナルでTTSテスト:
 ```bash
-python3 mascot/hooks/mascot_tts.py --emotion Joy "マスコット動いてるよ"
+python3 .claude/hooks/mascot_tts.py --emotion Joy "マスコット動いてるよ"
 ```
 
 確認ポイント:
@@ -291,9 +291,9 @@ grep -q "mascot_tts.py" ~/.claude/CLAUDE.md 2>/dev/null && echo "OK" || echo "NO
 
 | ファイル | 説明 |
 |---------|------|
-| `mascot/hooks/mascot_tts.py` | 汎用TTSディスパッチャ |
-| `mascot/hooks/tts_config.toml` | TTS設定（speaker_name等） |
-| `mascot/hooks/tts_config.example.toml` | 設定例 |
+| `.claude/hooks/mascot_tts.py` | 汎用TTSディスパッチャ |
+| `.claude/hooks/tts_config.toml` | TTS設定（speaker_name等） |
+| `.claude/hooks/tts_config.example.toml` | 設定例 |
 | `mascot/emotions.toml` | 感情キー定義 |
 | `mascot/config/examples/blend_shape.toml` | ブレンドシェイプモデル設定例 |
 | `mascot/config/examples/parts.toml` | パーツモデル設定例 |
@@ -305,8 +305,8 @@ grep -q "mascot_tts.py" ~/.claude/CLAUDE.md 2>/dev/null && echo "OK" || echo "NO
 
 | リンク | リンク先 |
 |--------|---------|
-| `~/.claude/hooks/mascot_tts.py` | → `mascot/hooks/mascot_tts.py` |
-| `~/.claude/hooks/tts_config.toml` | → `mascot/hooks/tts_config.toml` |
+| `~/.claude/hooks/mascot_tts.py` | → `.claude/hooks/mascot_tts.py` |
+| `~/.claude/hooks/tts_config.toml` | → `.claude/hooks/tts_config.toml` |
 | `~/.claude/skills/*` | → `.claude/skills/*` |
 
 ### Makefile ターゲット

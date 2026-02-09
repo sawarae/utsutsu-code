@@ -78,10 +78,10 @@ TTSフックが`~/.claude/utsutsu-code/mascot_speaking`にJSONを書き込み:
 
 ```bash
 # 自動検出（COEIROINK → VOICEVOX → シグナルのみ の順に試行）
-python3 mascot/hooks/mascot_tts.py --emotion Joy "テストメッセージ"
+python3 .claude/hooks/mascot_tts.py --emotion Joy "テストメッセージ"
 
 # 明示的に設定する場合
-cp mascot/hooks/tts_config.example.toml mascot/hooks/tts_config.toml
+cp .claude/hooks/tts_config.example.toml .claude/hooks/tts_config.toml
 # tts_config.tomlを編集してエンジンとスピーカーを設定
 ```
 
@@ -103,14 +103,15 @@ mascot/
     mascot_controller.dart # シグナルファイルポーリング、感情状態、口パクアニメーション
     model_config.dart      # TOMLベースのモデル設定
     toml_parser.dart       # 軽量TOMLパーサー
-  hooks/
-    mascot_tts.py          # 汎用TTSディスパッチャ
-    tts_config.example.toml
   config/examples/         # モデルタイプ別の感情設定例
   emotions.toml            # 感情キーの正規定義
   macos/Runner/
     MainFlutterWindow.swift  # 透過、クリックスルー、ネイティブドラッグ
-.claude/                   # Claude Code設定・スキル
+.claude/
+  hooks/
+    mascot_tts.py          # 汎用TTSディスパッチャ
+    tts_config.example.toml
+  skills/                  # Claude Codeスキル定義
 README.md
 ```
 
@@ -127,7 +128,7 @@ README.md
 ```
 
 初回セットアップで行われること:
-- `mascot/hooks/mascot_tts.py` を `~/.claude/hooks/` にシンボリックリンク
+- `.claude/hooks/mascot_tts.py` を `~/.claude/hooks/` にシンボリックリンク
 - スキルを `~/.claude/skills/` にシンボリックリンク
 - `~/.claude/settings.json` にStop hook（セッション終了時のTTS通知）を設定
 - `~/.claude/CLAUDE.md` にTTS指示の追記を案内

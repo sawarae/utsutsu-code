@@ -110,12 +110,12 @@ rm -f ~/.claude/skills/tts-debug
 
 プロジェクト内のTTS設定を削除するか聞く:
 ```bash
-ls mascot/hooks/tts_config.toml 2>/dev/null && echo "EXISTS" || echo "CLEAN"
+ls .claude/hooks/tts_config.toml 2>/dev/null && echo "EXISTS" || echo "CLEAN"
 ```
 
 削除する場合:
 ```bash
-rm -f mascot/hooks/tts_config.toml
+rm -f .claude/hooks/tts_config.toml
 ```
 
 ### Step 7: グローバル CLAUDE.md のTTS設定削除
