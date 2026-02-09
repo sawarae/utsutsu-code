@@ -50,3 +50,9 @@ python3 ~/.claude/hooks/mascot_tts.py --emotion KEY "message"
 - No ASCII alphabet in messages — use Japanese or katakana (e.g. commit → コミット, README → リードミー)
 - Messages must be 30 characters or less
 - Falls back to macOS notification automatically when no TTS engine is available
+
+## Related Skills
+
+- `/tsukuyomi-setup` — Full setup
+- `/tsukuyomi-cleanup` — Cleanup
+- `/tts-debug` — Troubleshooting

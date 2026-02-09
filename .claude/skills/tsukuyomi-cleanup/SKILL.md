@@ -1,0 +1,143 @@
+---
+name: tsukuyomi-cleanup
+description: つくよみちゃんTTS・マスコット関連リソースのクリーンアップ
+user_invocable: true
+---
+
+# /tsukuyomi-cleanup - つくよみちゃんクリーンアップ
+
+## 概要
+
+マスコットアプリ、TTS関連のプロセス・シグナルファイル・ビルド成果物・グローバルフックを掃除する。
+
+## 引数
+
+- 省略時: ユーザーに何を掃除するか聞く
+- `all`: 全項目を実行
+- `process`: プロセスのみ停止
+- `signal`: シグナルファイルのみ削除
+- `build`: ビルド成果物のみ削除
+- `hooks`: グローバルフックのみ削除
+
+## 実行手順
+
+### Step 1: マスコットプロセスの停止
+
+実行中のマスコットアプリを確認し、停止するか聞く:
+```bash
+pgrep -f "utsutsu_code" && echo "RUNNING" || echo "NOT_RUNNING"
+```
+
+停止する場合:
+```bash
+pkill -f "utsutsu_code"
+```
+
+`flutter run` が動いている場合も確認:
+```bash
+pgrep -f "flutter run" && echo "FLUTTER_RUN_ACTIVE" || echo "NOT_RUNNING"
+```
+
+### Step 2: シグナルファイルの削除
+
+残留したシグナルファイルを掃除する:
+```bash
+ls ~/.claude/utsutsu-code/mascot_speaking 2>/dev/null && echo "STALE" || echo "CLEAN"
+ls ~/.claude/utsutsu-code/mascot_listening 2>/dev/null && echo "STALE" || echo "CLEAN"
+```
+
+残留している場合:
+```bash
+rm -f ~/.claude/utsutsu-code/mascot_speaking
+rm -f ~/.claude/utsutsu-code/mascot_listening
+```
+
+### Step 3: ビルド成果物の削除
+
+ユーザーに確認してから削除する:
+```bash
+du -sh mascot/build 2>/dev/null || echo "NO_BUILD"
+```
+
+削除する場合:
+```bash
+rm -rf mascot/build
+```
+
+### Step 4: ダウンロード済みアセットの削除
+
+ユーザーに確認してから削除する（再ダウンロードに `make setup` が必要になる）:
+```bash
+ls mascot/assets/models/blend_shape/model.inp 2>/dev/null && echo "HAS_MODEL"
+ls mascot/assets/fallback/mouth_open.png 2>/dev/null && echo "HAS_FALLBACK"
+```
+
+削除する場合:
+```bash
+rm -f mascot/assets/models/blend_shape/model.inp
+rm -f mascot/assets/models/parts/model.inp
+rm -f mascot/assets/fallback/*.png
+```
+
+### Step 5: グローバルシンボリックリンクの削除
+
+`~/.claude/` のシンボリックリンクを削除する:
+```bash
+# フック
+ls -la ~/.claude/hooks/mascot_tts.py 2>/dev/null
+ls -la ~/.claude/hooks/tts_config.toml 2>/dev/null
+
+# スキル
+ls -la ~/.claude/skills/ 2>/dev/null
+```
+
+削除する場合:
+```bash
+# フック
+rm -f ~/.claude/hooks/mascot_tts.py
+rm -f ~/.claude/hooks/tts_config.toml
+
+# スキル（シンボリックリンクのみ削除、プロジェクト内の正のソースは残る）
+rm -f ~/.claude/skills/tsukuyomi-setup
+rm -f ~/.claude/skills/tsukuyomi-cleanup
+rm -f ~/.claude/skills/tts
+rm -f ~/.claude/skills/tts-debug
+```
+
+**注意:** フック削除でStop hookのTTS通知が動かなくなる。スキル削除で他プロジェクトからの `/tsukuyomi-setup` 等が使えなくなる。再セットアップには `/tsukuyomi-setup` を使う。
+
+### Step 6: ローカル設定ファイルの削除
+
+プロジェクト内のTTS設定を削除するか聞く:
+```bash
+ls mascot/hooks/tts_config.toml 2>/dev/null && echo "EXISTS" || echo "CLEAN"
+```
+
+削除する場合:
+```bash
+rm -f mascot/hooks/tts_config.toml
+```
+
+## Makefile ターゲット
+
+`mascot/Makefile` にクリーンアップターゲットがある。スキル実行時はこれらを使う:
+
+| ターゲット | 内容 |
+|-----------|------|
+| `make clean` | ビルド + シグナル削除（安全な基本掃除） |
+| `make clean-build` | `build/` のみ削除 |
+| `make clean-signal` | シグナルファイルのみ削除 |
+| `make clean-assets` | モデル・画像を削除（要 `make setup` で再取得） |
+| `make clean-hooks` | グローバルフックのリンク削除（要 `/tsukuyomi-setup` で再作成） |
+
+## 確認ルール
+
+- 各ステップで削除前に必ずユーザーに確認する（`all` 引数の場合も確認する）
+- プロセス停止は特に注意（保存していないデータがある可能性）
+- `make clean` は安全。`clean-assets` と `clean-hooks` は再セットアップが必要になるため必ず確認する
+- グローバルフック削除時はStop hookのTTS通知が動かなくなることを警告する
+
+## 関連スキル
+
+- `/tsukuyomi-setup` — 再セットアップ
+- `/tts-debug` — TTS問題の診断

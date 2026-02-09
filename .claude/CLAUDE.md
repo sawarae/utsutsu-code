@@ -2,7 +2,7 @@
 
 Desktop mascot with lip-sync animation for AI coding assistants.
 
-### つくよみちゃんTTS通知
+## つくよみちゃんTTS通知
 
 作業開始時と作業完了時に `python3 ~/.claude/hooks/mascot_tts.py --emotion KEY "要約(30文字以内)"` でつくよみちゃんに読み上げさせる。
 感情キーは `mascot/emotions.toml` を参照。状況に合った感情を選ぶこと。
@@ -37,9 +37,20 @@ Desktop mascot with lip-sync animation for AI coding assistants.
 セッション終了時に自動でTTSが発火する（`.claude/settings.json` で設定済み）。
 タイムアウトは5000ミリ秒。可用性チェック(1秒) + 音声合成(4秒)。再生はバックグラウンド。
 
-## Signal Files
+## シグナルファイル
 
-Signal files live under `~/.claude/utsutsu-code/`:
-- `mascot_speaking` — TTS hook writes, mascot reads (JSON with message + emotion)
-- `mascot_listening` — voice input writes, mascot reads
+`~/.claude/utsutsu-code/` に置かれる:
+- `mascot_speaking` — TTSフックが書き込み、マスコットが読む（JSON: message + emotion）
+- `mascot_listening` — 音声入力が書き込み、マスコットが読む
+
+## ファイル配置
+
+正のソースはすべてこのリポジトリ内。`~/.claude/` にはシンボリックリンクを置く。
+
+| リポジトリ（正） | グローバル（リンク） |
+|------------------|---------------------|
+| `mascot/hooks/mascot_tts.py` | `~/.claude/hooks/mascot_tts.py` |
+| `.claude/skills/*` | `~/.claude/skills/*` |
+
+セットアップ: `/tsukuyomi-setup` / クリーンアップ: `/tsukuyomi-cleanup`
 

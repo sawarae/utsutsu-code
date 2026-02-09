@@ -1,17 +1,1 @@
-# TTS Configuration for utsutsu-code mascot
-# Copy this file to tts_config.toml and customize.
-# tts_config.toml is .gitignored.
-
-# TTS engine: "coeiroink", "voicevox", or "none"
-# If not set, auto-detects available engines.
-# engine = "coeiroink"
-
-# Speaker name filter (substring match)
-# For COEIROINK: matches speakerName (e.g. "つくよみ")
-# For VOICEVOX: matches speaker name (e.g. "ずんだもん")
-# If not set, uses the first available speaker.
-# speaker_name = "つくよみ"
-
-# Custom ports (defaults shown)
-# coeiroink_port = 50032
-# voicevox_port = 50021
+../../mascot/hooks/tts_config.example.toml

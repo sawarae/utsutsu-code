@@ -106,24 +106,53 @@ speaker_name = "つくよみ"
 TOML
 ```
 
-グローバルhookにも反映:
+### Step 3.5: グローバルフックのデプロイ
 
+`~/.claude/hooks/` にTTSスクリプトと設定を配置する。ユーザーに「シンボリックリンクとコピー、どちらにしますか？」と聞く。
+
+**選択肢A: シンボリックリンク（推奨）**
+
+リポジトリのファイルを直接参照するため、更新が自動反映される:
 ```bash
-cat > ~/.claude/hooks/tts_config.toml << 'TOML'
-# Tsukuyomi via COEIROINK v2
-engine = "coeiroink"
-speaker_name = "つくよみ"
-TOML
+mkdir -p ~/.claude/hooks ~/.claude/skills
+# フック
+ln -sf "$(pwd)/mascot/hooks/mascot_tts.py" ~/.claude/hooks/mascot_tts.py
+ln -sf "$(pwd)/mascot/hooks/tts_config.toml" ~/.claude/hooks/tts_config.toml 2>/dev/null || \
+  cp mascot/hooks/tts_config.toml ~/.claude/hooks/tts_config.toml
+# スキル
+for skill in tsukuyomi-setup tsukuyomi-cleanup tts tts-debug; do
+  ln -sf "$(pwd)/.claude/skills/$skill" ~/.claude/skills/$skill
+done
+```
+
+**選択肢B: コピー**
+
+リポジトリに依存しない独立したコピーを作成する（リポジトリを移動/削除しても動作する）:
+```bash
+mkdir -p ~/.claude/hooks
+cp mascot/hooks/mascot_tts.py ~/.claude/hooks/mascot_tts.py
+cp mascot/hooks/tts_config.toml ~/.claude/hooks/tts_config.toml 2>/dev/null || true
+# スキルはコピー不要（プロジェクト内の .claude/skills/ がそのまま使われる）
+```
+
+**確認:**
+```bash
+python3 ~/.claude/hooks/mascot_tts.py --emotion Gentle "グローバルフックのテスト"
 ```
 
 ### Step 4: フォールバック画像のセットアップ
 
+utsutsu2d モデル (.inp) が既にある場合はこのステップをスキップする:
+```bash
+ls mascot/assets/models/blend_shape/model.inp 2>/dev/null || ls mascot/assets/models/parts/model.inp 2>/dev/null
+```
+
+.inp が無い場合のみ、フォールバック用の口パク画像をダウンロードする:
 ```bash
 cd mascot && make setup-fallback
 ```
 
-これにより `mascot/assets/fallback/mouth_open.png` と `mouth_closed.png` がダウンロードされる。
-utsutsu2d モデル (.inp) がない場合、マスコットはこの2枚絵で口パクする。
+これにより `mascot/assets/fallback/mouth_open.png` と `mouth_closed.png` がダウンロードされ、マスコットはこの2枚絵で口パクする。
 
 ### Step 5: モデルディレクトリのセットアップ
 
@@ -237,7 +266,11 @@ cat ~/.claude/settings.json
    - `ls mascot/assets/fallback/` で画像があるか確認
    - なければ `cd mascot && make setup-fallback` を実行
 
-## ファイル一覧
+## ファイル配置
+
+正のソースはリポジトリ内。`~/.claude/` にはシンボリックリンクを置く。
+
+### リポジトリ内（正のソース）
 
 | ファイル | 説明 |
 |---------|------|
@@ -249,6 +282,30 @@ cat ~/.claude/settings.json
 | `mascot/config/examples/parts.toml` | パーツモデル設定例 |
 | `mascot/assets/fallback/` | フォールバック口パク画像 |
 | `mascot/assets/models/` | utsutsu2dモデルディレクトリ |
+| `.claude/skills/` | スキル定義（コミット対象） |
+
+### グローバル（シンボリックリンク）
+
+| リンク | リンク先 |
+|--------|---------|
+| `~/.claude/hooks/mascot_tts.py` | → `mascot/hooks/mascot_tts.py` |
+| `~/.claude/hooks/tts_config.toml` | → `mascot/hooks/tts_config.toml` |
+| `~/.claude/skills/*` | → `.claude/skills/*` |
+
+### Makefile ターゲット
+
+| ターゲット | 内容 |
+|-----------|------|
+| `make setup` | モデル + フォールバック画像のダウンロード |
+| `make clean` | ビルド + シグナル削除（安全） |
+| `make clean-assets` | モデル・画像を削除（要 `make setup` で再取得） |
+| `make clean-hooks` | グローバルフックを削除（要 `/tsukuyomi-setup` で再作成） |
+
+## 関連スキル
+
+- `/tsukuyomi-cleanup` — クリーンアップ
+- `/tts-debug` — TTS問題の診断
+- `/tts` — TTS手動実行
 
 ## クレジット
 

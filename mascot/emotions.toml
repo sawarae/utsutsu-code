@@ -8,7 +8,7 @@
 #
 # ── Signal Protocol ──────────────────────────────────────────
 #
-# The TTS hook writes ~/.claude/mascot_speaking with JSON:
+# The TTS hook writes ~/.claude/utsutsu-code/mascot_speaking with JSON:
 #   {"message": "text", "emotion": "Joy"}
 #
 # MascotController reads this file every 100ms and applies params.

@@ -1,6 +1,7 @@
 ---
 name: tts-debug
 description: TTS engine status check, speaker test, and troubleshooting
+user_invocable: true
 ---
 
 # /tts-debug - TTS Engine Management
@@ -89,3 +90,9 @@ TTS_ENGINE=none python3 mascot/hooks/mascot_tts.py --emotion Gentle "テスト�
 - Uses stdlib only (no pip dependencies)
 - Supports auto-detection: tries COEIROINK → VOICEVOX → signal-only
 - Configure via `mascot/hooks/tts_config.toml` or `TTS_ENGINE` / `TTS_SPEAKER` env vars
+
+## Related Skills
+
+- `/tsukuyomi-setup` — Full setup
+- `/tsukuyomi-cleanup` — Cleanup
+- `/tts` — Manual TTS execution
