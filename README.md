@@ -1,7 +1,7 @@
 # utsutsu-code (うつつこーど)
 
 Claude Code向けのデスクトップマスコットアプリです。
-<img width="790" height="481" alt="tsukuyomi" src="https://github.com/user-attachments/assets/fea2be1c-d3c2-4c3c-9a7c-f0ae8360da08" />
+<img width="796" height="484" alt="tsukuyomi_typo" src="https://github.com/user-attachments/assets/7fb64c12-c1c8-49d8-8748-5a029a2fa91b" />
 
 Claude CodeのSKILLベースで実行しています。
 デフォルトではつくよみちゃんが起動します。apple silicon Macのみ対応です。
