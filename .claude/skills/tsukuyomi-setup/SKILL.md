@@ -120,7 +120,7 @@ ln -sf "$(pwd)/.claude/hooks/mascot_tts.py" ~/.claude/hooks/mascot_tts.py
 ln -sf "$(pwd)/.claude/hooks/tts_config.toml" ~/.claude/hooks/tts_config.toml 2>/dev/null || \
   cp .claude/hooks/tts_config.toml ~/.claude/hooks/tts_config.toml
 # スキル
-for skill in tsukuyomi-setup tsukuyomi-cleanup tts tts-debug; do
+for skill in tsukuyomi-setup tsukuyomi-cleanup tts tts-debug mascot-run; do
   ln -sf "$(pwd)/.claude/skills/$skill" ~/.claude/skills/$skill
 done
 ```
@@ -186,19 +186,13 @@ python3 ~/.claude/hooks/mascot_tts.py --emotion Gentle "グローバルフック
 
 ### Step 7: マスコットアプリ起動テスト
 
-```bash
-cd mascot && flutter run -d macos
-```
+`/mascot-run` スキルを呼び出してマスコットアプリを起動する。
 
-アプリが起動したら、別ターミナルでTTSテスト:
-```bash
-python3 .claude/hooks/mascot_tts.py --emotion Joy "マスコット動いてるよ"
-```
-
-確認ポイント:
-- 口パク（mouth_open/closed が150ms間隔で切り替わる）
-- 吹き出しにメッセージが表示される
-- 音声再生終了後に吹き出しがフェードアウトする
+スキルが以下を実行する:
+- 既存プロセスの確認
+- Flutter SDK・アセットの確認
+- `cd mascot && flutter run -d macos` でアプリ起動
+- TTSテストで口パク連携を確認
 
 ### Step 8: settings.json 確認
 
@@ -320,6 +314,7 @@ grep -q "mascot_tts.py" ~/.claude/CLAUDE.md 2>/dev/null && echo "OK" || echo "NO
 
 ## 関連スキル
 
+- `/mascot-run` — マスコットアプリ起動
 - `/tsukuyomi-cleanup` — クリーンアップ
 - `/tts-debug` — TTS問題の診断
 - `/tts` — TTS手動実行

@@ -95,4 +95,5 @@ TTS_ENGINE=none python3 .claude/hooks/mascot_tts.py --emotion Gentle "テスト�
 
 - `/tsukuyomi-setup` — Full setup
 - `/tsukuyomi-cleanup` — Cleanup
+- `/mascot-run` — Launch mascot app
 - `/tts` — Manual TTS execution

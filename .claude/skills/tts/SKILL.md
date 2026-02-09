@@ -61,4 +61,5 @@ python3 ~/.claude/hooks/mascot_tts.py --emotion KEY "message"
 
 - `/tsukuyomi-setup` — Full setup
 - `/tsukuyomi-cleanup` — Cleanup
+- `/mascot-run` — Launch mascot app
 - `/tts-debug` — Troubleshooting
