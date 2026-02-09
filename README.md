@@ -1,6 +1,6 @@
 # utsutsu-code (うつつこーど)
 
-Claude Code向けAIコーディングアシスタント向けのデスクトップマスコットアプリです。
+Claude Code向けのデスクトップマスコットアプリです。
 <img width="790" height="481" alt="tsukuyomi" src="https://github.com/user-attachments/assets/fea2be1c-d3c2-4c3c-9a7c-f0ae8360da08" />
 
 Claude CodeのSKILLベースで実行しています。
