@@ -236,8 +236,8 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: HEAD
-      resolved-ref: "16197c4123d896cbd34460e7d4ba5823fdf758e5"
+      ref: "v0.02"
+      resolved-ref: "3401698e2e3dba0fb85617b75ba528bfc6f583e2"
       url: "https://github.com/sawarae/utsutsu2d"
     source: git
     version: "0.1.0"

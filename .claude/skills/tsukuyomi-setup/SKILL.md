@@ -219,7 +219,7 @@ cat .claude/settings.json
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/mascot_tts.py --emotion Joy \\\"タスク完了しました\\\"",
+            "command": "python3 ~/.claude/hooks/mascot_tts.py --emotion Joy \"タスク完了しました\"",
             "timeout": 5000
           }
         ]

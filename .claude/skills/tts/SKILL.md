@@ -1,3 +1,9 @@
+---
+name: tts
+description: つくよみちゃんTTS - 感情付きメッセージ読み上げ
+user_invocable: true
+---
+
 # /tts - Mascot TTS (with emotion)
 
 Have the mascot speak a message with lip-sync animation and emotion expression.

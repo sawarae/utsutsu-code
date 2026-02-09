@@ -12,7 +12,8 @@ Engine selection priority:
   3. Auto-detect (try coeiroink, then voicevox, then none)
 
 Usage:
-  python3 hooks/mascot_tts.py --emotion KEY "message"
+  python3 mascot/hooks/mascot_tts.py --emotion KEY "message"
+  python3 ~/.claude/hooks/mascot_tts.py --emotion KEY "message"
 """
 
 import json
