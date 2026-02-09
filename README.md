@@ -4,15 +4,16 @@ Claude Code向けのデスクトップマスコットアプリです。
 <img width="796" height="484" alt="tsukuyomi_typo" src="https://github.com/user-attachments/assets/7fb64c12-c1c8-49d8-8748-5a029a2fa91b" />
 
 Claude CodeのSKILLベースで実行しています。
-デフォルトではつくよみちゃんが起動します。apple silicon Macのみ対応です。
+デフォルトではつくよみちゃんが起動します。macOS / Windows に対応しています。
 
 ## クイックスタート
 
 ### 前提条件
 - [COEIROINKv2](https://coeiroink.com/download)
 - Flutter SDK (3.10+)
-- macOS
+- macOS または Windows
 - Python3
+- (Windows) Visual Studio (C++ デスクトップ開発ワークロード)
 
 ### セットアップ
 
@@ -35,7 +36,8 @@ Claude Codeで `/tsukuyomi-setup` を実行すると、前提条件チェック�
 cd mascot
 flutter pub get
 make setup          # モデル + フォールバック画像のダウンロード
-flutter run -d macos
+flutter run -d macos    # macOS
+flutter run -d windows  # Windows
 ```
 
 その後、.claudeディレクトリの内容を開発用のプロジェクト内にコピーしてください。

@@ -97,17 +97,67 @@ def clear_signal():
         pass
 
 
-def notify_osascript(message):
-    """Fallback: show macOS notification."""
-    subprocess.run(
-        [
-            "osascript",
-            "-e",
-            f'display notification "{message}" with title "Mascot TTS"',
-        ],
-        check=False,
-        timeout=3,
-    )
+def notify_fallback(message):
+    """Fallback: show platform-native notification."""
+    if sys.platform == "darwin":
+        subprocess.run(
+            [
+                "osascript",
+                "-e",
+                f'display notification "{message}" with title "Mascot TTS"',
+            ],
+            check=False,
+            timeout=3,
+        )
+    elif sys.platform == "win32":
+        # Non-blocking balloon tip notification
+        subprocess.run(
+            [
+                "powershell",
+                "-c",
+                (
+                    "Add-Type -AssemblyName System.Windows.Forms; "
+                    "$n = New-Object System.Windows.Forms.NotifyIcon; "
+                    "$n.Icon = [System.Drawing.SystemIcons]::Information; "
+                    "$n.Visible = $true; "
+                    f"$n.ShowBalloonTip(3000, 'Mascot TTS', '{message}', "
+                    "[System.Windows.Forms.ToolTipIcon]::Info); "
+                    "Start-Sleep -Milliseconds 3000; "
+                    "$n.Dispose()"
+                ),
+            ],
+            check=False,
+            timeout=5,
+        )
+    else:
+        # Linux: notify-send
+        subprocess.run(
+            ["notify-send", "Mascot TTS", message],
+            check=False,
+            timeout=3,
+        )
+
+
+def _play_wav(wav_path):
+    """Play a WAV file using the platform's native player."""
+    if sys.platform == "darwin":
+        subprocess.run(["afplay", wav_path], timeout=5, check=False)
+    elif sys.platform == "win32":
+        subprocess.run(
+            [
+                "powershell",
+                "-c",
+                (
+                    f"(New-Object System.Media.SoundPlayer('{wav_path}'))"
+                    ".PlaySync()"
+                ),
+            ],
+            timeout=5,
+            check=False,
+        )
+    else:
+        # Linux
+        subprocess.run(["aplay", wav_path], timeout=5, check=False)
 
 
 # ── Adapters ──────────────────────────────────────────────────
@@ -176,7 +226,7 @@ class CoeiroinkAdapter:
 
         try:
             write_signal(text, emotion)
-            subprocess.run(["afplay", wav_path], timeout=5, check=False)
+            _play_wav(wav_path)
         finally:
             clear_signal()
             os.unlink(wav_path)
@@ -260,7 +310,7 @@ class VoicevoxAdapter:
 
         try:
             write_signal(text, emotion)
-            subprocess.run(["afplay", wav_path], timeout=5, check=False)
+            _play_wav(wav_path)
         finally:
             clear_signal()
             os.unlink(wav_path)
@@ -351,7 +401,7 @@ def main():
 
         if isinstance(adapter, NoneAdapter):
             adapter.synthesize_and_play(message, emotion)
-            notify_osascript(message)
+            notify_fallback(message)
             result = {
                 "status": "fallback",
                 "engine": "none",
@@ -369,7 +419,7 @@ def main():
                     result["emotion"] = emotion
                 logging.info("TTS playback complete via %s", engine_name)
             else:
-                notify_osascript(message)
+                notify_fallback(message)
                 result = {
                     "status": "fallback",
                     "reason": "speaker_not_found",
@@ -380,7 +430,7 @@ def main():
     except Exception as e:
         logging.error("TTS failed: %s", e)
         try:
-            notify_osascript(message)
+            notify_fallback(message)
         except Exception:
             pass
         result = {"status": "error", "error": str(e), "message": message}

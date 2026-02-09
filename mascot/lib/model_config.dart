@@ -45,15 +45,25 @@ class ModelConfig {
     return ModelConfig._fromToml(dirPath, toml);
   }
 
-  /// Resolve model from `MASCOT_MODEL` env var.
-  /// Looks in `MASCOT_MODELS_DIR` (default: `assets/models/` relative to CWD).
-  factory ModelConfig.fromEnvironment() {
-    final modelName =
-        Platform.environment['MASCOT_MODEL'] ?? 'blend_shape';
-    final modelsDir =
-        Platform.environment['MASCOT_MODELS_DIR'] ?? 'assets/models';
-    final dirPath = '$modelsDir/$modelName';
+  /// Resolve model from CLI args, env vars, or defaults.
+  ///
+  /// Priority: CLI arg > env var > default.
+  /// Default models dir is `data/models` relative to the exe location.
+  factory ModelConfig.fromEnvironment({String? modelsDir, String? model}) {
+    final modelName = model
+        ?? Platform.environment['MASCOT_MODEL']
+        ?? 'blend_shape';
+    final baseDir = modelsDir
+        ?? Platform.environment['MASCOT_MODELS_DIR']
+        ?? _defaultModelsDir();
+    final dirPath = '$baseDir/$modelName';
     return ModelConfig.fromDirectory(dirPath);
+  }
+
+  /// Resolve default models dir relative to the running executable.
+  static String _defaultModelsDir() {
+    final exeDir = File(Platform.resolvedExecutable).parent.path;
+    return '$exeDir/data/models';
   }
 
   static ModelConfig _fromToml(String dirPath, Map<String, dynamic> toml) {

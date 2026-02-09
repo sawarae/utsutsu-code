@@ -7,7 +7,9 @@ import 'package:utsutsu2d/utsutsu2d.dart';
 import 'mascot_controller.dart';
 
 class MascotWidget extends StatefulWidget {
-  const MascotWidget({super.key});
+  final MascotController controller;
+
+  const MascotWidget({super.key, required this.controller});
 
   @override
   State<MascotWidget> createState() => _MascotWidgetState();
@@ -15,7 +17,7 @@ class MascotWidget extends StatefulWidget {
 
 class _MascotWidgetState extends State<MascotWidget>
     with SingleTickerProviderStateMixin {
-  final _controller = MascotController();
+  MascotController get _controller => widget.controller;
   late final AnimationController _fadeController;
   bool _showBubble = false;
   String _bubbleText = '';
@@ -118,7 +120,6 @@ class _MascotWidgetState extends State<MascotWidget>
   @override
   void dispose() {
     _controller.removeListener(_onControllerChanged);
-    _controller.dispose();
     _fadeController.dispose();
     _puppetController?.dispose();
     super.dispose();
