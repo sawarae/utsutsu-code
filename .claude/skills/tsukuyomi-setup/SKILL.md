@@ -59,7 +59,7 @@ if not found:
 ### Step 3: TTS config 設定
 
 ```bash
-cat > hooks/tts_config.toml << 'TOML'
+cat > mascot/hooks/tts_config.toml << 'TOML'
 # Tsukuyomi via COEIROINK v2
 engine = "coeiroink"
 speaker_name = "つくよみ"
@@ -79,32 +79,32 @@ TOML
 ### Step 4: フォールバック画像のセットアップ
 
 ```bash
-make setup-fallback
+cd mascot && make setup-fallback
 ```
 
-これにより `assets/fallback/mouth_open.png` と `mouth_closed.png` がダウンロードされる。
-kokoro2d モデル (.inp) がない場合、マスコットはこの2枚絵で口パクする。
+これにより `mascot/assets/fallback/mouth_open.png` と `mouth_closed.png` がダウンロードされる。
+utsutsu2d モデル (.inp) がない場合、マスコットはこの2枚絵で口パクする。
 
 ### Step 5: モデルディレクトリのセットアップ
 
 ```bash
-make setup-models
+cd mascot && make setup-models
 ```
 
-kokoro2d モデルファイルがある場合:
+utsutsu2d モデルファイルがある場合:
 ```bash
-cp /path/to/tsukuyomi_blend_shape.inp assets/models/blend_shape/model.inp
+cp /path/to/tsukuyomi_blend_shape.inp mascot/assets/models/blend_shape/model.inp
 # または
-cp /path/to/tsukuyomi_parts.inp assets/models/parts/model.inp
+cp /path/to/tsukuyomi_parts.inp mascot/assets/models/parts/model.inp
 ```
 
 ### Step 6: TTS テスト
 
 ```bash
 # プロジェクトのディスパッチャ経由
-python3 hooks/mascot_tts.py --emotion Gentle "つくよみちゃんのテストです"
-python3 hooks/mascot_tts.py --emotion Joy "テスト成功だよ"
-python3 hooks/mascot_tts.py --emotion Trouble "テスト失敗だよ"
+python3 mascot/hooks/mascot_tts.py --emotion Gentle "つくよみちゃんのテストです"
+python3 mascot/hooks/mascot_tts.py --emotion Joy "テスト成功だよ"
+python3 mascot/hooks/mascot_tts.py --emotion Trouble "テスト失敗だよ"
 
 # グローバルhook経由
 python3 ~/.claude/hooks/mascot_tts.py --emotion Gentle "グローバルフックのテスト"
@@ -118,12 +118,12 @@ python3 ~/.claude/hooks/mascot_tts.py --emotion Gentle "グローバルフック
 ### Step 7: マスコットアプリ起動テスト
 
 ```bash
-flutter run -d macos
+cd mascot && flutter run -d macos
 ```
 
 アプリが起動したら、別ターミナルでTTSテスト:
 ```bash
-python3 hooks/mascot_tts.py --emotion Joy "マスコット動いてるよ"
+python3 mascot/hooks/mascot_tts.py --emotion Joy "マスコット動いてるよ"
 ```
 
 確認ポイント:
@@ -143,7 +143,7 @@ python3 hooks/mascot_tts.py --emotion Joy "マスコット動いてるよ"
         "hooks": [
           {
             "type": "command",
-            "command": "python3 hooks/mascot_tts.py --emotion Joy \"タスク完了しました\""
+            "command": "python3 mascot/hooks/mascot_tts.py --emotion Joy \\\"タスク完了しました\\\""
           }
         ]
       }
@@ -174,21 +174,21 @@ python3 hooks/mascot_tts.py --emotion Joy "マスコット動いてるよ"
    - ログ確認: `cat ~/.claude/logs/mascot_tts.log`
 
 5. **フォールバック画像が表示されない**
-   - `ls assets/fallback/` で画像があるか確認
-   - なければ `make setup-fallback` を実行
+   - `ls mascot/assets/fallback/` で画像があるか確認
+   - なければ `cd mascot && make setup-fallback` を実行
 
 ## ファイル一覧
 
 | ファイル | 説明 |
 |---------|------|
-| `hooks/mascot_tts.py` | 汎用TTSディスパッチャ |
-| `hooks/tts_config.toml` | TTS設定（speaker_name等） |
-| `hooks/tts_config.example.toml` | 設定例 |
-| `emotions.toml` | 感情キー定義 |
-| `config/examples/blend_shape.toml` | ブレンドシェイプモデル設定例 |
-| `config/examples/parts.toml` | パーツモデル設定例 |
-| `assets/fallback/` | フォールバック口パク画像 |
-| `assets/models/` | kokoro2dモデルディレクトリ |
+| `mascot/hooks/mascot_tts.py` | 汎用TTSディスパッチャ |
+| `mascot/hooks/tts_config.toml` | TTS設定（speaker_name等） |
+| `mascot/hooks/tts_config.example.toml` | 設定例 |
+| `mascot/emotions.toml` | 感情キー定義 |
+| `mascot/config/examples/blend_shape.toml` | ブレンドシェイプモデル設定例 |
+| `mascot/config/examples/parts.toml` | パーツモデル設定例 |
+| `mascot/assets/fallback/` | フォールバック口パク画像 |
+| `mascot/assets/models/` | utsutsu2dモデルディレクトリ |
 
 ## クレジット
 

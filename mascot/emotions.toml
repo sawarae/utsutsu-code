@@ -4,7 +4,7 @@
 # Consumers:
 #   - utsutsu-code mascot (MascotController → puppet.setParam)
 #   - TTS hook (hooks/mascot_tts.py --emotion KEY)
-#   - kokoro2d expression presets
+#   - utsutsu2d expression presets
 #
 # ── Signal Protocol ──────────────────────────────────────────
 #

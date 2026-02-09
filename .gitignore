@@ -18,9 +18,6 @@ migrate_working_dir/
 *.iws
 .idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
 #.vscode/
 
 # Flutter/Dart/Pub related
@@ -30,7 +27,7 @@ migrate_working_dir/
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
-/build/
+**/build/
 /coverage/
 
 # Symbolication related
@@ -47,12 +44,16 @@ app.*.map.json
 # Binary assets (loaded at runtime, not committed)
 *.inp
 *.inx
-assets/**/*.png
-assets/models/
-assets/fallback/
+mascot/assets/**/*.png
+mascot/assets/models/
+mascot/assets/fallback/
 
 # TTS user config
-hooks/tts_config.toml
+mascot/hooks/tts_config.toml
+
+# CocoaPods
+mascot/macos/Pods/
+mascot/macos/Podfile.lock
 
 # Misc
 __pycache__/

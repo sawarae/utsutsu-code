@@ -13,7 +13,7 @@ When called without arguments, automatically select an appropriate message and e
 
 ## Emotion Keys
 
-See `emotions.toml` for the canonical reference:
+See `mascot/emotions.toml` for the canonical reference:
 
 | Key | Meaning | When to use |
 |-----|---------|-------------|
@@ -33,7 +33,7 @@ See `emotions.toml` for the canonical reference:
 2. Execute the command
 
 ```bash
-python3 hooks/mascot_tts.py --emotion KEY "message"
+python3 mascot/hooks/mascot_tts.py --emotion KEY "message"
 ```
 
 ### Emotion Selection Examples

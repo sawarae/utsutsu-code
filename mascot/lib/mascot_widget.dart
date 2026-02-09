@@ -2,7 +2,7 @@ import 'dart:io' as io;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:kokoro2d/kokoro2d.dart';
+import 'package:utsutsu2d/utsutsu2d.dart';
 
 import 'mascot_controller.dart';
 
@@ -74,7 +74,7 @@ class _MascotWidgetState extends State<MascotWidget>
         _syncParameters();
       }
     } catch (e) {
-      debugPrint('Failed to load kokoro2d model: $e');
+      debugPrint('Failed to load utsutsu2d model: $e');
     }
   }
 

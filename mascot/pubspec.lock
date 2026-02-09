@@ -91,15 +91,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.3.0"
-  kokoro2d:
-    dependency: "direct main"
-    description:
-      path: "."
-      ref: "claude/dev"
-      resolved-ref: "9b0b28081fe17583541e6d2e56d4ac075bd09b37"
-      url: "https://github.com/sawarae/kokoro2d"
-    source: git
-    version: "0.2.0"
   leak_tracker:
     dependency: transitive
     description:
@@ -241,6 +232,15 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.0"
+  utsutsu2d:
+    dependency: "direct main"
+    description:
+      path: "."
+      ref: HEAD
+      resolved-ref: "16197c4123d896cbd34460e7d4ba5823fdf758e5"
+      url: "https://github.com/sawarae/utsutsu2d"
+    source: git
+    version: "0.1.0"
   vector_math:
     dependency: transitive
     description:

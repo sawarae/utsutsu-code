@@ -52,12 +52,12 @@ Test via the project's TTS dispatcher:
 
 ```bash
 # Auto-detect engine
-python3 hooks/mascot_tts.py --emotion Joy "テストです"
+python3 mascot/hooks/mascot_tts.py --emotion Joy "テストです"
 
 # Force specific engine
-TTS_ENGINE=coeiroink python3 hooks/mascot_tts.py --emotion Gentle "テストです"
-TTS_ENGINE=voicevox python3 hooks/mascot_tts.py --emotion Gentle "テストです"
-TTS_ENGINE=none python3 hooks/mascot_tts.py --emotion Gentle "テストです"
+TTS_ENGINE=coeiroink python3 mascot/hooks/mascot_tts.py --emotion Gentle "テストです"
+TTS_ENGINE=voicevox python3 mascot/hooks/mascot_tts.py --emotion Gentle "テストです"
+TTS_ENGINE=none python3 mascot/hooks/mascot_tts.py --emotion Gentle "テストです"
 ```
 
 ### Step 4: Troubleshooting
@@ -68,7 +68,7 @@ TTS_ENGINE=none python3 hooks/mascot_tts.py --emotion Gentle "テストです"
 
 2. **Speaker not found**
    - Check speaker list in Step 2
-   - Configure `speaker_name` in `hooks/tts_config.toml`
+   - Configure `speaker_name` in `mascot/hooks/tts_config.toml`
 
 3. **No audio playback**
    - Check macOS volume settings
@@ -88,4 +88,4 @@ TTS_ENGINE=none python3 hooks/mascot_tts.py --emotion Gentle "テストです"
 - Falls back to osascript notification when no TTS engine is available
 - Uses stdlib only (no pip dependencies)
 - Supports auto-detection: tries COEIROINK → VOICEVOX → signal-only
-- Configure via `hooks/tts_config.toml` or `TTS_ENGINE` / `TTS_SPEAKER` env vars
+- Configure via `mascot/hooks/tts_config.toml` or `TTS_ENGINE` / `TTS_SPEAKER` env vars
