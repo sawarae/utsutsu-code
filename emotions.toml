@@ -1,0 +1,102 @@
+# Emotion Configuration
+# Canonical spec for emotion keys, used by both model types.
+#
+# Consumers:
+#   - utsutsu-code mascot (MascotController → puppet.setParam)
+#   - TTS hook (hooks/mascot_tts.py --emotion KEY)
+#   - kokoro2d expression presets
+#
+# ── Signal Protocol ──────────────────────────────────────────
+#
+# The TTS hook writes ~/.claude/mascot_speaking with JSON:
+#   {"message": "text", "emotion": "Joy"}
+#
+# MascotController reads this file every 100ms and applies params.
+#
+# ── Idle / Reset ─────────────────────────────────────────────
+#
+# When no emotion is active (signal file absent):
+#   - Blend Shape: all emotion params = 0.0, MouthOpen = 0.0
+#   - Parts Model: apply [Gentle.parts_model] as default face
+
+[Gentle]
+description = "Calm, gentle"
+usage = "Greetings, explanations, normal reports"
+
+[Gentle.blend_shape]
+Gentle = 1.0
+
+[Gentle.parts_model]
+EyebrowType = 0.0       # Normal
+EyeType = 0.333          # SlightlyNarrow
+MouthType = 0.0           # ClosedSmile
+CheekType = 0.0           # Normal
+
+[Joy]
+description = "Happy, joyful"
+usage = "Test passed, build succeeded, task completed"
+
+[Joy.blend_shape]
+Joy = 1.0
+
+[Joy.parts_model]
+EyebrowType = 0.333     # SurprisedJoy
+EyeType = 0.5            # Narrow (happy squint)
+MouthType = 0.286        # BigSmile
+CheekType = 0.333        # Blush
+
+[Blush]
+description = "Shy, bashful"
+usage = "Being praised, reporting minor mistakes"
+
+[Blush.blend_shape]
+Blush = 1.0
+
+[Blush.parts_model]
+EyebrowType = 0.5       # Troubled
+EyeType = 0.833          # ClosedSmile
+MouthType = 0.143        # SmallSmile
+CheekType = 0.333        # Blush
+
+[Trouble]
+description = "Troubled, worried"
+usage = "Error occurred, test failed, warning"
+
+[Trouble.blend_shape]
+Trouble = 1.0
+
+[Trouble.parts_model]
+EyebrowType = 0.5       # Troubled
+EyeType = 0.333          # SlightlyNarrow
+MouthType = 1.0           # Silent
+CheekType = 0.0           # Normal
+
+[Singing]
+description = "Fun, excited"
+usage = "Celebration, jokes, completion fanfare"
+
+[Singing.blend_shape]
+Singing = 1.0
+
+[Singing.parts_model]
+EyebrowType = 0.0       # Normal
+EyeType = 0.333          # SlightlyNarrow
+MouthType = 0.571        # OpenMedium
+CheekType = 0.333        # Blush
+
+# ── Mouth Animation During Speech ────────────────────────────
+[mouth_animation]
+# Blend Shape Model: toggle MouthOpen 0↔1 every 150ms
+blend_shape_param = "MouthOpen"
+blend_shape_closed = 0.0
+blend_shape_open = 1.0
+
+# Parts Model: alternate MouthType between emotion default and open
+parts_model_param = "MouthType"
+parts_model_open = 0.429  # OpenBigNormal
+interval_ms = 150
+
+# ── Fallback Images ─────────────────────────────────────────
+[fallback]
+mouth_open = "assets/fallback/mouth_open.png"
+mouth_closed = "assets/fallback/mouth_closed.png"
