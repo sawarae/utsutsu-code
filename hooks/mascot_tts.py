@@ -32,7 +32,8 @@ LOG_FILE = os.path.join(LOG_DIR, "mascot_tts.log")
 
 DEFAULT_MESSAGE = "Task completed"
 MAX_MESSAGE_LENGTH = 30
-SIGNAL_FILE = os.path.expanduser("~/.claude/mascot_speaking")
+SIGNAL_DIR = os.path.expanduser("~/.claude/utsutsu-code")
+SIGNAL_FILE = os.path.join(SIGNAL_DIR, "mascot_speaking")
 
 # Default ports
 COEIROINK_PORT = 50032
@@ -79,6 +80,7 @@ def load_config():
 
 def write_signal(text, emotion=None):
     """Write the mascot speaking signal file."""
+    os.makedirs(SIGNAL_DIR, exist_ok=True)
     if emotion:
         signal = json.dumps({"message": text, "emotion": emotion})
     else:

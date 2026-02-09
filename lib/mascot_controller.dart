@@ -7,17 +7,16 @@ import 'package:flutter/foundation.dart';
 import 'model_config.dart';
 
 class MascotController extends ChangeNotifier {
-  static final String _defaultSignalPath = () {
+  static final String _signalDir = () {
     final home = Platform.environment['HOME'];
     if (home == null) throw StateError('HOME environment variable not set');
-    return '$home/.claude/mascot_speaking';
+    final dir = '$home/.claude/utsutsu-code';
+    Directory(dir).createSync(recursive: true);
+    return dir;
   }();
 
-  static final String _defaultListeningPath = () {
-    final home = Platform.environment['HOME'];
-    if (home == null) throw StateError('HOME environment variable not set');
-    return '$home/.claude/mascot_listening';
-  }();
+  static String get _defaultSignalPath => '$_signalDir/mascot_speaking';
+  static String get _defaultListeningPath => '$_signalDir/mascot_listening';
 
   final String _signalPath;
   final String _listeningPath;
@@ -185,6 +184,17 @@ class MascotController extends ChangeNotifier {
   void dispose() {
     _pollTimer?.cancel();
     _animTimer?.cancel();
+    _cleanup();
     super.dispose();
+  }
+
+  /// Remove stale signal files on shutdown.
+  void _cleanup() {
+    for (final path in [_signalPath, _listeningPath]) {
+      try {
+        final file = File(path);
+        if (file.existsSync()) file.deleteSync();
+      } catch (_) {}
+    }
   }
 }
