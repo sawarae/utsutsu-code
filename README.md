@@ -55,11 +55,6 @@ flutter run -d macos    # macOS
 #       └── emotions.toml
 ```
 
-引数でパスを上書きすることもできます:
-
-```bash
-mascot.exe --models-dir C:\path\to\models --model blend_shape --signal-dir C:\path\to\signals
-```
 
 その後、.claudeディレクトリの内容を開発用のプロジェクト内にコピーしてください。
 
