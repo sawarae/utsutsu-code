@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 hooks/mascot_tts.py --emotion Joy \"タスク完了しました\""
+          }
+        ]
+      }
+    ]
+  }
+}
