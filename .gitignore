@@ -53,8 +53,9 @@ mascot/assets/models/**
 !mascot/assets/models/**/.gitkeep
 mascot/assets/fallback/
 
-# TTS user config
+# Claude
 .claude/hooks/tts_config.toml
+.claude/settings.local.json
 
 # CocoaPods
 mascot/macos/Pods/
