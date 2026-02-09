@@ -30,21 +30,31 @@ python3 --version 2>/dev/null && echo "OK" || echo "NOT_FOUND"
 
 **Flutter チェック:**
 ```bash
-flutter --version 2>/dev/null && echo "OK" || echo "NOT_FOUND"
+which flutter 2>/dev/null && echo "OK" || echo "NOT_FOUND"
 ```
 見つからない場合 → ユーザーに「Flutter SDK がインストールされていないようです。インストールしていますか？（マスコットアプリのビルドに必要です）」と聞く。
+（注: `flutter --version` はSDK初期化で遅いため `which` で存在チェックのみ行う）
 
 **COEIROINK v2 チェック:**
+
+まずアプリの存在を確認し、次に起動状態を確認する（未インストール vs 未起動を区別）:
 ```bash
+# 1. アプリがインストールされているか
+ls /Applications/COEIROINKv2.app > /dev/null 2>&1 \
+  && echo "INSTALLED" || echo "NOT_INSTALLED"
+
+# 2. 起動しているか（インストール済みの場合のみ）
 curl -s --connect-timeout 2 http://localhost:50032/v1/speakers > /dev/null 2>&1 \
-  && echo "OK" || echo "NOT_FOUND"
+  && echo "RUNNING" || echo "NOT_RUNNING"
 ```
-見つからない場合 → ユーザーに「COEIROINK v2 が起動していないようです。インストールしていますか？」と聞く。
+- **未インストールの場合** → 「COEIROINK v2 がインストールされていないようです。https://coeiroink.com からダウンロードできます。インストールしていますか？」と聞く
+- **インストール済みだが未起動の場合** → 「COEIROINK v2 がインストールされていますが起動していません。COEIROINKv2.app を起動してください」と案内する
 
 **判定ルール:**
 - Python 3 が無い場合: TTSもマスコットも動かないため、インストールを案内して中断
 - Flutter が無い場合: マスコットアプリのビルド(Step 7)をスキップ可能。TTS部分のみセットアップを続行するか聞く
-- COEIROINK v2 が無い/未起動の場合: インストール済みなら起動を促す。未インストールなら https://coeiroink.com からダウンロードを案内
+- COEIROINK v2 が未インストールの場合: https://coeiroink.com からダウンロードを案内
+- COEIROINK v2 が未起動の場合: COEIROINKv2.app の起動を促す
 
 すべての前提条件が揃っていることを確認してから Step 1 に進む。
 
@@ -163,7 +173,14 @@ python3 mascot/hooks/mascot_tts.py --emotion Joy "マスコット動いてるよ
 
 ### Step 8: settings.json 確認
 
-プロジェクトの `.claude/settings.json`:
+#### プロジェクト設定（`.claude/settings.json`）
+
+セッション終了時に自動でTTSを発火するStop hookが設定されているか確認:
+```bash
+cat .claude/settings.json
+```
+
+期待される内容:
 ```json
 {
   "hooks": {
@@ -173,7 +190,8 @@ python3 mascot/hooks/mascot_tts.py --emotion Joy "マスコット動いてるよ
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/mascot_tts.py --emotion Joy \\\"タスク完了しました\\\""
+            "command": "python3 ~/.claude/hooks/mascot_tts.py --emotion Joy \\\"タスク完了しました\\\"",
+            "timeout": 5000
           }
         ]
       }
@@ -182,7 +200,19 @@ python3 mascot/hooks/mascot_tts.py --emotion Joy "マスコット動いてるよ
 }
 ```
 
-グローバルの `~/.claude/settings.json` にも同様のhookがあるか確認。
+#### グローバル設定（`~/.claude/settings.json`）
+
+他のプロジェクトでもTTS通知を使うために、グローバル設定にも同じhookを追加する:
+```bash
+cat ~/.claude/settings.json
+```
+
+`hooks.Stop` セクションが無い、または `osascript` のみの場合は、上記と同じStop hookを追加する。
+
+**注意点:**
+- コマンドのパスは必ず `~/.claude/hooks/mascot_tts.py` を使う（相対パスだとCWDによって壊れる）
+- `timeout: 5000` を必ず設定する（TTSがClaude Codeをブロックしないように）
+- タイムアウト内訳: 可用性チェック(1秒) + 音声合成(4秒)。再生はバックグラウンド
 
 ## トラブルシューティング
 
