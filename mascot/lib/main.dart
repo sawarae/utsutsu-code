@@ -30,6 +30,10 @@ void main(List<String> args) async {
     backgroundColor: Colors.transparent,
     titleBarStyle:
         Platform.isWindows ? TitleBarStyle.normal : TitleBarStyle.hidden,
+    // Hide traffic light buttons in wander mode. Must be set here (not in
+    // Swift awakeFromNib) because window_manager's setTitleBarStyle
+    // force-unwraps standardWindowButton(.closeButton) superview.
+    windowButtonVisibility: !config.wander,
     skipTaskbar: false,
     alwaysOnTop: true,
   );
@@ -184,6 +188,7 @@ class _MascotAppState extends State<MascotApp> {
       _wanderController = WanderController(
         windowWidth: windowW,
         windowHeight: windowH,
+        signalDir: widget.config.signalDir,
       );
       _wanderController!.start();
     }
