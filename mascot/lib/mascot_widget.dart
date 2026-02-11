@@ -307,6 +307,14 @@ class _MascotWidgetState extends State<MascotWidget>
             final charH = _isWander
                 ? _wander!.windowHeight.toDouble()
                 : 528.0;
+
+            // Position bubble near the character head in wander mode.
+            // The character renders in the lower portion of the window
+            // due to small zoom, so place bubble ~40% from top.
+            final wanderBubbleTop = _isWander
+                ? (charH * 0.40).roundToDouble()
+                : 0.0;
+
             return Stack(
               children: [
                 Positioned(
@@ -339,7 +347,7 @@ class _MascotWidgetState extends State<MascotWidget>
                   _isWander
                       ? Positioned(
                           left: 4,
-                          top: 0,
+                          top: wanderBubbleTop,
                           right: 4,
                           child: FadeTransition(
                             key: _bubbleKey,
@@ -364,7 +372,7 @@ class _MascotWidgetState extends State<MascotWidget>
                   _isWander
                       ? Positioned(
                           left: 4,
-                          top: i * 30.0,
+                          top: wanderBubbleTop - (i + 1) * 30.0,
                           right: 4,
                           child: _WanderBubble(
                             text: _expressionService.activeBubbles[i].text,
@@ -457,6 +465,11 @@ class _MascotWidgetState extends State<MascotWidget>
         interactive: false,
         backgroundColor: Colors.transparent,
       );
+    }
+
+    // Hide until model is loaded to prevent initial flicker
+    if (!_modelLoaded) {
+      return const SizedBox.shrink();
     }
 
     // Fallback to static PNG images loaded from filesystem
