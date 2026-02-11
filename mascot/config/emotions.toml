@@ -140,7 +140,7 @@ interval_ms = 150
 [haiku]
 # Prompt template for Claude Haiku CLI phrase generation.
 # {emotion} is replaced with the emotion key at runtime.
-prompt = "次の感情で、つくよみちゃんのセリフを生成: {emotion}\n条件: ですます調、30文字以内、かわいい、プログラマーへの声かけ\n禁止: 括弧、説明文、前置き、装飾記号\n出力: セリフの文のみ1行"
+prompt = "次の感情で、つくよみちゃんのセリフを生成: {emotion}\n条件: ですます調、50文字以内、かわいいおしゃべり\n禁止: 括弧、説明文、前置き、装飾記号\n出力: セリフの文のみ1行"
 
 # ── Fallback Images ─────────────────────────────────────────
 [fallback]

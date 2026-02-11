@@ -207,7 +207,7 @@ class ExpressionService {
       if (lines.isEmpty) return null;
 
       final output = lines.last.trim();
-      if (output.isEmpty || output.length > 30) {
+      if (output.isEmpty || output.length > 100) {
         debugPrint('ExpressionService: Haiku output invalid: "$output"');
         return null;
       }
