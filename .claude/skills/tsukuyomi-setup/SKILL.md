@@ -64,8 +64,14 @@ ls /Applications/COEIROINKv2.app > /dev/null 2>&1 \
 
 **Windows:** アプリ存在チェックは不要（インストール先が環境依存のため）。ポートチェックのみで判定する。
 
-- **未インストール / 未起動の場合** → 「COEIROINK v2 が起動していません。https://coeiroink.com からダウンロードし起動してください」と案内する
+- **未インストール / 未起動の場合** → ダウンロードページをブラウザで開き、起動を案内する:
+  - **Windows:** `start https://coeiroink.com/download`
+  - **macOS:** `open https://coeiroink.com/download`
+  - **Linux:** `xdg-open https://coeiroink.com/download`
 - **macOS でインストール済みだが未起動の場合** → 「COEIROINK v2 がインストールされていますが起動していません。COEIROINKv2.app を起動してください」と案内する
+- **初回起動時に「開発元が検証できません」と表示される場合** → 以下の手順を案内する:
+  - **macOS:** 「システム設定 → プライバシーとセキュリティ」を開くと、ブロックされたアプリの横に「このまま開く」ボタンが表示されるのでクリック
+  - **Windows:** SmartScreen で「WindowsによってPCが保護されました」と表示されたら、「詳細情報」をクリック →「実行」をクリック
 
 **判定ルール:**
 - Python 3 が無い場合: TTSもマスコットも動かないため、インストールを案内して中断
@@ -224,8 +230,12 @@ cd mascot && flutter run -d macos
 python3 .claude/skills/tsukuyomi-setup/setup_helper.py check-release
 ```
 
-2. コマンド出力はツール結果に折りたたまれてユーザーに見えないため、出力からダウンロードURLを取り出して**テキストで改めて表示**し、以下の手順を案内する:
-   1. 表示したURLからzipファイルをダウンロード
+2. コマンド出力からリリースページURLを取り出し、プラットフォームに応じてブラウザで直接開く（ターミナルの折り返しでURLが壊れるため、テキスト表示ではなくブラウザを開く）:
+   - **Windows:** `start <URL>`
+   - **macOS:** `open <URL>`
+   - **Linux:** `xdg-open <URL>`
+3. ブラウザが開いたら、以下の手順を案内する:
+   1. Assets セクションの `utsutsu-code-windows.zip` をクリックしてダウンロード
    2. zipを右クリック →「すべて展開」で解凍（ダブルクリックで中身を見るだけでは動かない）
    3. 展開されたフォルダ内の `mascot.exe` をダブルクリックして起動
 

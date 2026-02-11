@@ -63,12 +63,14 @@ def check_release():
         print(f"ERROR: Cannot fetch release info - {e}")
         return 1
 
-    print(f'Latest release: {release["tag_name"]}')
+    tag = release["tag_name"]
+    html_url = release["html_url"]
+    print(f"Latest release: {tag}")
     for asset in release.get("assets", []):
         if asset["name"].endswith(".zip"):
             size_mb = asset["size"] // 1024 // 1024
-            print(f'  {asset["name"]} ({size_mb} MB)')
-            print(f'  Download: {asset["browser_download_url"]}')
+            print(f"  {asset['name']} ({size_mb} MB)")
+    print(f"  Page: {html_url}")
 
     return 0
 
