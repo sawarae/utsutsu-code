@@ -35,8 +35,12 @@ class MascotController extends ChangeNotifier {
   bool get isListening => _isListening;
 
   MascotController({String? signalDir, String? modelsDir, String? model})
-      : _signalPath = '${signalDir ?? _defaultSignalDir()}/mascot_speaking',
-        _listeningPath = '${signalDir ?? _defaultSignalDir()}/mascot_listening' {
+      : this._fromDir(signalDir ?? _defaultSignalDir(),
+            modelsDir: modelsDir, model: model);
+
+  MascotController._fromDir(String dir, {String? modelsDir, String? model})
+      : _signalPath = '$dir/mascot_speaking',
+        _listeningPath = '$dir/mascot_listening' {
     _modelConfig = ModelConfig.fromEnvironment(
       modelsDir: modelsDir,
       model: model,

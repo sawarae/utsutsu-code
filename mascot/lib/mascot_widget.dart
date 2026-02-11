@@ -2,6 +2,7 @@ import 'dart:io' as io;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 import 'package:utsutsu2d/utsutsu2d.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -47,7 +48,7 @@ class _MascotWidgetState extends State<MascotWidget>
         return;
       }
       final bytes = file.readAsBytesSync();
-      final fileName = config.modelFilePath.split('/').last;
+      final fileName = p.basename(config.modelFilePath);
       final model = ModelLoader.loadFromBytes(bytes, fileName);
 
       // Decode textures

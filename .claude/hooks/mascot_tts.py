@@ -100,16 +100,20 @@ def clear_signal():
 def notify_fallback(message):
     """Fallback: show platform-native notification."""
     if sys.platform == "darwin":
+        # Escape backslashes and double quotes for osascript
+        safe = message.replace("\\", "\\\\").replace('"', '\\"')
         subprocess.run(
             [
                 "osascript",
                 "-e",
-                f'display notification "{message}" with title "Mascot TTS"',
+                f'display notification "{safe}" with title "Mascot TTS"',
             ],
             check=False,
             timeout=3,
         )
     elif sys.platform == "win32":
+        # Escape single quotes for PowerShell string interpolation
+        safe = message.replace("'", "''")
         # Non-blocking balloon tip notification
         subprocess.run(
             [
@@ -120,7 +124,7 @@ def notify_fallback(message):
                     "$n = New-Object System.Windows.Forms.NotifyIcon; "
                     "$n.Icon = [System.Drawing.SystemIcons]::Information; "
                     "$n.Visible = $true; "
-                    f"$n.ShowBalloonTip(3000, 'Mascot TTS', '{message}', "
+                    f"$n.ShowBalloonTip(3000, 'Mascot TTS', '{safe}', "
                     "[System.Windows.Forms.ToolTipIcon]::Info); "
                     "Start-Sleep -Milliseconds 3000; "
                     "$n.Dispose()"
@@ -143,12 +147,13 @@ def _play_wav(wav_path):
     if sys.platform == "darwin":
         subprocess.run(["afplay", wav_path], timeout=5, check=False)
     elif sys.platform == "win32":
+        safe_path = wav_path.replace("'", "''")
         subprocess.run(
             [
                 "powershell",
                 "-c",
                 (
-                    f"(New-Object System.Media.SoundPlayer('{wav_path}'))"
+                    f"(New-Object System.Media.SoundPlayer('{safe_path}'))"
                     ".PlaySync()"
                 ),
             ],

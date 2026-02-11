@@ -73,6 +73,10 @@ bool FlutterWindow::OnCreate() {
     ACCENT_POLICY accent = {ACCENT_ENABLE_TRANSPARENTGRADIENT, 2, 0, 0};
     WINDOWCOMPOSITIONATTRIBDATA data = {19, &accent, sizeof(accent)};
     SetWindowCompositionAttribute(hwnd, &data);
+  } else {
+    OutputDebugString(
+        L"[mascot] SetWindowCompositionAttribute not available; "
+        L"window transparency may not work correctly.\n");
   }
 
   // Start click-through polling timer (50ms, matching macOS interval)
@@ -96,11 +100,27 @@ void FlutterWindow::OnDestroy() {
     KillTimer(hwnd, kClickThroughTimerId);
   }
 
+  FreeCachedBitmap();
+
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
 
   Win32Window::OnDestroy();
+}
+
+void FlutterWindow::FreeCachedBitmap() {
+  if (cached_dc_) {
+    if (cached_old_bmp_) SelectObject(cached_dc_, cached_old_bmp_);
+    if (cached_dib_) DeleteObject(cached_dib_);
+    DeleteDC(cached_dc_);
+    cached_dc_ = nullptr;
+    cached_dib_ = nullptr;
+    cached_old_bmp_ = nullptr;
+    cached_bits_ = nullptr;
+    cached_width_ = 0;
+    cached_height_ = 0;
+  }
 }
 
 LRESULT
@@ -119,7 +139,9 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
 
   switch (message) {
     case WM_FONTCHANGE:
-      flutter_controller_->engine()->ReloadSystemFonts();
+      if (flutter_controller_) {
+        flutter_controller_->engine()->ReloadSystemFonts();
+      }
       break;
     case WM_TIMER:
       if (wparam == kClickThroughTimerId) {
@@ -208,43 +230,45 @@ bool FlutterWindow::IsTransparentAtCursor() {
     return true;
   }
 
-  // Create a 32-bit top-down DIB section for alpha-aware pixel reading
-  BITMAPINFOHEADER bmi = {};
-  bmi.biSize = sizeof(BITMAPINFOHEADER);
-  bmi.biWidth = width;
-  bmi.biHeight = -height;  // negative = top-down
-  bmi.biPlanes = 1;
-  bmi.biBitCount = 32;
-  bmi.biCompression = BI_RGB;
+  // Reuse a cached DIB section to avoid allocating/freeing every 50ms.
+  // Recreate only when the window size changes (e.g. DPI change).
+  // Note: Both GetWindowRect and PrintWindow use physical (DPI-scaled)
+  // pixels, so their coordinates are consistent at any DPI setting.
+  if (!cached_dc_ || cached_width_ != width || cached_height_ != height) {
+    FreeCachedBitmap();
 
-  void* bits = nullptr;
-  HDC screen_dc = GetDC(nullptr);
-  HDC mem_dc = CreateCompatibleDC(screen_dc);
-  HBITMAP dib = CreateDIBSection(mem_dc, reinterpret_cast<BITMAPINFO*>(&bmi),
-                                  DIB_RGB_COLORS, &bits, nullptr, 0);
+    BITMAPINFOHEADER bmi = {};
+    bmi.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.biWidth = width;
+    bmi.biHeight = -height;  // negative = top-down
+    bmi.biPlanes = 1;
+    bmi.biBitCount = 32;
+    bmi.biCompression = BI_RGB;
 
-  if (!dib || !bits) {
-    if (dib) DeleteObject(dib);
-    DeleteDC(mem_dc);
+    HDC screen_dc = GetDC(nullptr);
+    cached_dc_ = CreateCompatibleDC(screen_dc);
+    cached_dib_ = CreateDIBSection(
+        cached_dc_, reinterpret_cast<BITMAPINFO*>(&bmi),
+        DIB_RGB_COLORS, &cached_bits_, nullptr, 0);
     ReleaseDC(nullptr, screen_dc);
-    return true;
+
+    if (!cached_dib_ || !cached_bits_) {
+      FreeCachedBitmap();
+      return true;
+    }
+
+    cached_old_bmp_ = static_cast<HBITMAP>(SelectObject(cached_dc_, cached_dib_));
+    cached_width_ = width;
+    cached_height_ = height;
   }
 
-  HBITMAP old_bitmap = static_cast<HBITMAP>(SelectObject(mem_dc, dib));
-
   // Capture window content including DWM-composited alpha
-  PrintWindow(hwnd, mem_dc, PW_RENDERFULLCONTENT);
+  PrintWindow(hwnd, cached_dc_, PW_RENDERFULLCONTENT);
 
-  // Read alpha at cursor position (DIB pixel format: BGRA)
+  // Read alpha at cursor position directly from DIB bits (BGRA format)
   BYTE* pixel =
-      static_cast<BYTE*>(bits) + (local_y * width + local_x) * 4;
+      static_cast<BYTE*>(cached_bits_) + (local_y * width + local_x) * 4;
   BYTE alpha = pixel[3];
-
-  // Cleanup
-  SelectObject(mem_dc, old_bitmap);
-  DeleteObject(dib);
-  DeleteDC(mem_dc);
-  ReleaseDC(nullptr, screen_dc);
 
   return alpha < 10;
 }

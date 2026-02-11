@@ -33,6 +33,9 @@ class FlutterWindow : public Win32Window {
   // Returns true if the pixel under the cursor in this window is transparent.
   bool IsTransparentAtCursor();
 
+  // Free cached resources used by IsTransparentAtCursor.
+  void FreeCachedBitmap();
+
   // The project to run.
   flutter::DartProject project_;
 
@@ -44,6 +47,14 @@ class FlutterWindow : public Win32Window {
 
   // Previous left-button state for edge detection.
   bool mouse_was_down_ = false;
+
+  // Cached DIB section for IsTransparentAtCursor to avoid per-poll allocation.
+  HDC cached_dc_ = nullptr;
+  HBITMAP cached_dib_ = nullptr;
+  HBITMAP cached_old_bmp_ = nullptr;
+  void* cached_bits_ = nullptr;  // Direct pixel access (BGRA)
+  int cached_width_ = 0;
+  int cached_height_ = 0;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

@@ -1,4 +1,4 @@
-
+# 開発ガイド
 
 ## 機能
 
@@ -158,6 +158,35 @@ make clean          # ビルド + シグナル削除（安全）
 make clean-assets   # モデル・画像を削除
 make clean-hooks    # グローバルフックのリンク削除
 ```
+
+## CI / リリース
+
+### GitHub Actions (`release-windows.yml`)
+
+`v*` タグの push で Windows ビルドと GitHub Release 作成を自動実行する。
+
+**トリガー:**
+- `v*` タグ push → ビルド + GitHub Release 作成
+- `workflow_dispatch` → ビルド + artifact のみ（手動テスト用）
+
+**ステップ:**
+1. Flutter セットアップ (3.38.x, キャッシュ有効)
+2. `flutter pub get`
+3. `gh release download` でモデルファイル (.inp) を取得
+4. `flutter build windows --release`
+5. モデルファイルをビルド出力にコピー
+6. `Compress-Archive` で zip 作成
+7. `upload-artifact` で成果物を保存
+8. タグ push 時のみ `gh release create --generate-notes`
+
+**リリース手順:**
+
+```bash
+git tag v0.xx
+git push origin v0.xx
+```
+
+成果物は https://github.com/sawarae/utsutsu-code/releases に公開される。
 
 ## テスト
 
