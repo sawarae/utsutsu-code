@@ -73,6 +73,17 @@ class ExpressionService extends ChangeNotifier {
         'config/emotions.toml',
       ];
 
+      // Debug: walk up from exe dir to find project config
+      var dir = Directory(exeDir);
+      for (var i = 0; i < 10; i++) {
+        dir = dir.parent;
+        final candidate = '${dir.path}/config/emotions.toml';
+        if (File(candidate).existsSync()) {
+          candidates.insert(0, candidate);
+          break;
+        }
+      }
+
       for (final path in candidates) {
         final file = File(path);
         if (file.existsSync()) {

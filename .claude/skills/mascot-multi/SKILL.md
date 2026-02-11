@@ -1,6 +1,7 @@
 # /mascot-multi - マルチマスコットインスタンス管理
 
 タスクごとに専用のマスコットインスタンスを起動し、各タスクの通知を対応するマスコットにルーティングする。
+タスクマスコットはミニモデル（1.5MB）・小さいウィンドウ・Dock非表示で起動される。
 
 ## Usage
 
@@ -32,9 +33,8 @@ echo "All task mascots stopped and cleaned up"
 
 N = 引数の数値（デフォルト: 2、最大: 3）
 
-画面幅の制約: ウィンドウ幅424px + 間隔16px = 440px/体
-- 1440px画面 → 最大3体
-- 1920px画面 → 最大4体（ただし3体推奨）
+ミニマスコットのウィンドウ: 264x400px（メイン: 424x528px）
+配置間隔: 280px/体（264px + 16px間隔）
 
 ### Step 2: メインマスコットの確認
 
@@ -61,20 +61,28 @@ ls ~/.claude/utsutsu-code/task-*/mascot.pid 2>/dev/null && echo "EXISTING_TASKS"
 mkdir -p ~/.claude/utsutsu-code/task-{i}/
 
 # マスコット起動（バックグラウンド）
-# offset-x: 440 * (i + 1) でメインマスコットの右に配置
-cd /path/to/mascot && flutter run -d macos -a --signal-dir -a ~/.claude/utsutsu-code/task-{i}/ -a --offset-x -a {440 * (i + 1)} &
+# --no-dock: macOS Dockに表示しない
+# --width/--height: ミニサイズウィンドウ
+# --model blend_shape_mini: ミニモデル（軽量1.5MB）
+# offset-x: 424 + 280 * i でメインマスコットの右に配置
+cd /path/to/mascot && flutter run -d macos \
+  -a --signal-dir -a ~/.claude/utsutsu-code/task-{i}/ \
+  -a --offset-x -a {424 + 280 * i} \
+  -a --model -a blend_shape_mini \
+  -a --width -a 264 -a --height -a 400 \
+  -a --no-dock &
 
 # PID記録
 echo $! > ~/.claude/utsutsu-code/task-{i}/mascot.pid
 ```
 
 **位置の計算:**
-| インスタンス | offset-x | 役割 |
-|-------------|----------|------|
-| メイン | 0 | 親エージェント通知 |
-| task-0 | 440 | サブエージェント#0 |
-| task-1 | 880 | サブエージェント#1 |
-| task-2 | 1320 | サブエージェント#2 |
+| インスタンス | offset-x | サイズ | 役割 |
+|-------------|----------|--------|------|
+| メイン | 0 | 424x528 | 親エージェント通知 |
+| task-0 | 424 | 264x400 | サブエージェント#0 |
+| task-1 | 704 | 264x400 | サブエージェント#1 |
+| task-2 | 984 | 264x400 | サブエージェント#2 |
 
 **重要**: `flutter run` はBashツールの `run_in_background: true` で起動すること。
 
@@ -109,13 +117,33 @@ python3 ~/.claude/hooks/mascot_tts.py --signal-dir ~/.claude/utsutsu-code/task-{
 
 **macOS デバッグ:**
 ```bash
-cd /path/to/mascot && flutter run -d macos -a --signal-dir -a ~/.claude/utsutsu-code/task-{i}/ -a --offset-x -a {offset}
+cd /path/to/mascot && flutter run -d macos \
+  -a --signal-dir -a ~/.claude/utsutsu-code/task-{i}/ \
+  -a --offset-x -a {offset} \
+  -a --model -a blend_shape_mini \
+  -a --width -a 264 -a --height -a 400 \
+  -a --no-dock
 ```
 
 **macOS リリース:**
 ```bash
-open -n /path/to/utsutsu_code.app --args --signal-dir ~/.claude/utsutsu-code/task-{i}/ --offset-x {offset}
+open -n /path/to/utsutsu_code.app --args \
+  --signal-dir ~/.claude/utsutsu-code/task-{i}/ \
+  --offset-x {offset} \
+  --model blend_shape_mini \
+  --width 264 --height 400 \
+  --no-dock
 ```
+
+## サブエージェント終了時のディスミス
+
+サブエージェント完了後、対応するマスコットをポップエフェクト付きで消す:
+
+```bash
+python3 ~/.claude/hooks/mascot_tts.py --signal-dir ~/.claude/utsutsu-code/task-{i}/ --dismiss
+```
+
+これにより `mascot_dismiss` シグナルファイルが書かれ、マスコットが拡大→縮小+フェードアウト（0.3秒）で消える。
 
 ## クリーンアップ
 

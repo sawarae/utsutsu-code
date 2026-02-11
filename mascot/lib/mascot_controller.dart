@@ -9,13 +9,18 @@ import 'model_config.dart';
 class MascotController extends ChangeNotifier {
   final String _signalPath;
   final String _listeningPath;
+  final String _dismissPath;
   late final ModelConfig _modelConfig;
 
   bool _isSpeaking = false;
   bool _isListening = false;
   bool _directExpression = false;
+  bool _dismissed = false;
   String _message = '';
   String? _currentEmotion;
+
+  /// True when a dismiss signal has been received.
+  bool get isDismissed => _dismissed;
 
   late final Map<String, double> _parameters;
 
@@ -41,7 +46,8 @@ class MascotController extends ChangeNotifier {
 
   MascotController._fromDir(String dir, {String? modelsDir, String? model})
       : _signalPath = '$dir/mascot_speaking',
-        _listeningPath = '$dir/mascot_listening' {
+        _listeningPath = '$dir/mascot_listening',
+        _dismissPath = '$dir/mascot_dismiss' {
     _modelConfig = ModelConfig.fromEnvironment(
       modelsDir: modelsDir,
       model: model,
@@ -53,7 +59,8 @@ class MascotController extends ChangeNotifier {
 
   @visibleForTesting
   MascotController.withConfig(this._signalPath, ModelConfig config)
-      : _listeningPath = '${File(_signalPath).parent.path}/mascot_listening' {
+      : _listeningPath = '${File(_signalPath).parent.path}/mascot_listening',
+        _dismissPath = '${File(_signalPath).parent.path}/mascot_dismiss' {
     _modelConfig = config;
     _parameters = Map<String, double>.from(_modelConfig.defaultParameters);
     _setEmotion(null); // Apply idle emotion
@@ -79,6 +86,13 @@ class MascotController extends ChangeNotifier {
   }
 
   void _checkSignalFile() {
+    // Check dismiss signal
+    if (!_dismissed && File(_dismissPath).existsSync()) {
+      _dismissed = true;
+      notifyListeners();
+      return;
+    }
+
     // Skip signal file polling while a direct expression is active
     if (_directExpression) return;
 
@@ -222,7 +236,7 @@ class MascotController extends ChangeNotifier {
 
   /// Remove stale signal files on shutdown.
   void _cleanup() {
-    for (final path in [_signalPath, _listeningPath]) {
+    for (final path in [_signalPath, _listeningPath, _dismissPath]) {
       try {
         final file = File(path);
         if (file.existsSync()) file.deleteSync();

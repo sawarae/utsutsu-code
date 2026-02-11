@@ -13,7 +13,7 @@ void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
 
-  const windowSize = Size(424, 528);
+  final windowSize = Size(config.width ?? 424, config.height ?? 528);
   final windowOptions = WindowOptions(
     size: windowSize,
     // On macOS, window_manager handles transparency via NSWindow.
@@ -49,8 +49,17 @@ class _AppConfig {
   final String? model;
   final String? signalDir;
   final double? offsetX;
+  final double? width;
+  final double? height;
 
-  const _AppConfig({this.modelsDir, this.model, this.signalDir, this.offsetX});
+  const _AppConfig({
+    this.modelsDir,
+    this.model,
+    this.signalDir,
+    this.offsetX,
+    this.width,
+    this.height,
+  });
 }
 
 /// Simple `--key value` argument parser (no external packages).
@@ -59,6 +68,8 @@ _AppConfig _parseArgs(List<String> args) {
   String? model;
   String? signalDir;
   double? offsetX;
+  double? width;
+  double? height;
 
   for (var i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -70,6 +81,10 @@ _AppConfig _parseArgs(List<String> args) {
         if (i + 1 < args.length) signalDir = args[++i];
       case '--offset-x':
         if (i + 1 < args.length) offsetX = double.tryParse(args[++i]);
+      case '--width':
+        if (i + 1 < args.length) width = double.tryParse(args[++i]);
+      case '--height':
+        if (i + 1 < args.length) height = double.tryParse(args[++i]);
     }
   }
 
@@ -78,6 +93,8 @@ _AppConfig _parseArgs(List<String> args) {
     model: model,
     signalDir: signalDir,
     offsetX: offsetX,
+    width: width,
+    height: height,
   );
 }
 

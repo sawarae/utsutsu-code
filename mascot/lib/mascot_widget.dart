@@ -34,6 +34,7 @@ class _MascotWidgetState extends State<MascotWidget>
   late final AnimationController _fadeController;
   late final AnimationController _jumpController;
   late final Animation<double> _jumpAnimation;
+  late final AnimationController _dismissController;
   late final ExpressionService _expressionService;
   bool _showBubble = false;
   String _bubbleText = '';
@@ -63,6 +64,10 @@ class _MascotWidgetState extends State<MascotWidget>
               .chain(CurveTween(curve: Curves.bounceOut)),
           weight: 70),
     ]).animate(_jumpController);
+    _dismissController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
     _expressionService = ExpressionService(_controller);
     _expressionService.addListener(_onBubblesChanged);
     _controller.addListener(_onControllerChanged);
@@ -158,6 +163,14 @@ class _MascotWidgetState extends State<MascotWidget>
   }
 
   void _onControllerChanged() {
+    // Handle dismiss signal: play "pop" animation then close
+    if (_controller.isDismissed && !_dismissController.isAnimating) {
+      _dismissController.forward().then((_) {
+        windowManager.close();
+      });
+      return;
+    }
+
     if (_modelLoaded) {
       _syncParameters();
     }
@@ -211,6 +224,7 @@ class _MascotWidgetState extends State<MascotWidget>
     _expressionService.dispose();
     _fadeController.dispose();
     _jumpController.dispose();
+    _dismissController.dispose();
     _puppetController?.dispose();
     super.dispose();
   }
@@ -219,7 +233,22 @@ class _MascotWidgetState extends State<MascotWidget>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: ListenableBuilder(
+      body: AnimatedBuilder(
+        animation: _dismissController,
+        builder: (context, child) {
+          final t = _dismissController.value;
+          // "Pop" effect: slight scale-up then shrink to 0, with fade
+          final scale = t < 0.2 ? 1.0 + t * 0.5 : (1.0 - t) * 1.25;
+          return Transform.scale(
+            scale: scale.clamp(0.0, 1.1),
+            alignment: Alignment.bottomCenter,
+            child: Opacity(
+              opacity: (1.0 - t).clamp(0.0, 1.0),
+              child: child,
+            ),
+          );
+        },
+        child: ListenableBuilder(
           listenable: _controller,
           builder: (context, _) {
             return Stack(
@@ -307,7 +336,8 @@ class _MascotWidgetState extends State<MascotWidget>
             );
           },
         ),
-      );
+      ),
+    );
   }
 
   Widget _buildCharacter() {

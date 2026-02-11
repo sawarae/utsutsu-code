@@ -392,6 +392,7 @@ def main():
     # Parse named flags from argv
     emotion = None
     signal_dir = None
+    dismiss = False
     argv = sys.argv[1:]
     filtered = []
     i = 0
@@ -402,6 +403,9 @@ def main():
         elif argv[i] == "--signal-dir" and i + 1 < len(argv):
             signal_dir = os.path.expanduser(argv[i + 1])
             i += 2
+        elif argv[i] == "--dismiss":
+            dismiss = True
+            i += 1
         else:
             filtered.append(argv[i])
             i += 1
@@ -413,6 +417,14 @@ def main():
         SIGNAL_DIR = signal_dir
         SIGNAL_FILE = os.path.join(signal_dir, "mascot_speaking")
         MUTE_FILE = os.path.join(signal_dir, "tts_muted")
+
+    # Dismiss: write dismiss signal and exit
+    if dismiss:
+        dismiss_path = os.path.join(SIGNAL_DIR, "mascot_dismiss")
+        os.makedirs(SIGNAL_DIR, exist_ok=True)
+        Path(dismiss_path).write_text("dismiss", encoding="utf-8")
+        print(json.dumps({"status": "dismissed", "signal_dir": SIGNAL_DIR}))
+        return
 
     # Custom message from argv, stdin JSON, or default
     if argv:
