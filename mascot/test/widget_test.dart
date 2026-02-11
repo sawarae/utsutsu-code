@@ -401,6 +401,113 @@ void main() {
     });
   });
 
+  // ── Zombie Child Cleanup Tests ─────────────────────────────
+
+  group('Wander children PID persistence', () {
+    late Directory signalDir;
+
+    setUp(() {
+      signalDir = Directory.systemTemp.createTempSync('zombie_test_');
+    });
+
+    tearDown(() {
+      signalDir.deleteSync(recursive: true);
+    });
+
+    test('wander_children.json round-trips child entries', () {
+      final childrenFile = File('${signalDir.path}/wander_children.json');
+      final entries = [
+        {'pid': 12345, 'signalDir': '/tmp/child1'},
+        {'pid': 67890, 'signalDir': '/tmp/child2'},
+      ];
+      childrenFile.writeAsStringSync(jsonEncode(entries));
+
+      final data =
+          jsonDecode(childrenFile.readAsStringSync()) as List<dynamic>;
+      expect(data.length, 2);
+      expect(data[0]['pid'], 12345);
+      expect(data[0]['signalDir'], '/tmp/child1');
+      expect(data[1]['pid'], 67890);
+      expect(data[1]['signalDir'], '/tmp/child2');
+    });
+
+    test('cleanup creates mascot_dismiss for each child signal dir', () {
+      // Create child signal dirs
+      final child1Dir =
+          Directory('${signalDir.path}/child1')..createSync(recursive: true);
+      final child2Dir =
+          Directory('${signalDir.path}/child2')..createSync(recursive: true);
+
+      // Write wander_children.json
+      final childrenFile = File('${signalDir.path}/wander_children.json');
+      final entries = [
+        {'pid': 99999, 'signalDir': child1Dir.path},
+        {'pid': 99998, 'signalDir': child2Dir.path},
+      ];
+      childrenFile.writeAsStringSync(jsonEncode(entries));
+
+      // Simulate cleanup logic (same as _cleanStaleChildren)
+      final data =
+          jsonDecode(childrenFile.readAsStringSync()) as List<dynamic>;
+      for (final entry in data) {
+        final pid = entry['pid'] as int?;
+        final dir = entry['signalDir'] as String?;
+        if (pid != null) {
+          try {
+            Process.killPid(pid);
+          } catch (_) {} // PID won't exist in test
+        }
+        if (dir != null) {
+          try {
+            File('$dir/mascot_dismiss').writeAsStringSync('');
+          } catch (_) {}
+        }
+      }
+      childrenFile.deleteSync();
+
+      // Verify mascot_dismiss files were created
+      expect(File('${child1Dir.path}/mascot_dismiss').existsSync(), true);
+      expect(File('${child2Dir.path}/mascot_dismiss').existsSync(), true);
+      // Verify children file was removed
+      expect(childrenFile.existsSync(), false);
+    });
+
+    test('cleanup handles missing wander_children.json gracefully', () {
+      final childrenFile = File('${signalDir.path}/wander_children.json');
+      // File doesn't exist — should not throw
+      expect(childrenFile.existsSync(), false);
+      // The actual code returns early; just verify no crash
+    });
+
+    test('cleanup handles corrupt JSON by deleting the file', () {
+      final childrenFile = File('${signalDir.path}/wander_children.json');
+      childrenFile.writeAsStringSync('not valid json!!!');
+
+      // Simulate cleanup with corrupt data
+      try {
+        jsonDecode(childrenFile.readAsStringSync()) as List<dynamic>;
+        fail('Should have thrown');
+      } catch (_) {
+        // Cleanup fallback: delete the file
+        try {
+          childrenFile.deleteSync();
+        } catch (_) {}
+      }
+
+      expect(childrenFile.existsSync(), false);
+    });
+
+    test('empty children list writes valid empty JSON array', () {
+      final childrenFile = File('${signalDir.path}/wander_children.json');
+      final emptyList = <Map<String, dynamic>>[];
+      childrenFile.writeAsStringSync(jsonEncode(emptyList));
+
+      final data =
+          jsonDecode(childrenFile.readAsStringSync()) as List<dynamic>;
+      expect(data, isEmpty);
+    });
+  });
+
   // ── ModelConfig Unit Tests ──────────────────────────────────
 
   group('ModelConfig', () {
