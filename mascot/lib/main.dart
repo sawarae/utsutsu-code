@@ -184,43 +184,52 @@ class _MascotAppState extends State<MascotApp> {
     final file = File(_spawnSignalPath);
     if (!file.existsSync()) return;
 
+    debugPrint('[Spawn] Signal file found: $_spawnSignalPath');
     try {
       final content = file.readAsStringSync().trim();
       file.deleteSync();
+      debugPrint('[Spawn] Content: $content');
 
       final json = jsonDecode(content) as Map<String, dynamic>;
       final signalDir = json['signal_dir'] as String;
       final model = json['model'] as String? ?? 'blend_shape_mini';
+      debugPrint('[Spawn] signalDir=$signalDir model=$model');
 
       // Clean any stale dismiss file
       final dismissFile = File('$signalDir/mascot_dismiss');
-      if (dismissFile.existsSync()) dismissFile.deleteSync();
+      if (dismissFile.existsSync()) {
+        dismissFile.deleteSync();
+        debugPrint('[Spawn] Cleaned stale dismiss file');
+      }
 
       // Ensure signal dir exists
       Directory(signalDir).createSync(recursive: true);
 
+      debugPrint('[Spawn] Creating MascotController...');
       final controller = MascotController(
         signalDir: signalDir,
         modelsDir: widget.config.modelsDir,
         model: model,
       );
+      debugPrint('[Spawn] MascotController created, model=${controller.modelConfig}');
 
       setState(() {
         _children.add(_ChildMascot(
           signalDir: signalDir,
           controller: controller,
         ));
+        debugPrint('[Spawn] Added child, total children=${_children.length}');
       });
       _updateWindowSize();
-    } catch (e) {
-      debugPrint('Failed to spawn child mascot: $e');
+    } catch (e, st) {
+      debugPrint('Failed to spawn child mascot: $e\n$st');
     }
   }
 
-  void _removeChild(int index) {
-    if (index < 0 || index >= _children.length) return;
-    final child = _children[index];
-    child.controller.dispose();
+  void _removeChildBySignalDir(String signalDir) {
+    final index = _children.indexWhere((c) => c.signalDir == signalDir);
+    if (index == -1) return;
+    _children[index].controller.dispose();
     setState(() {
       _children.removeAt(index);
     });
@@ -229,7 +238,10 @@ class _MascotAppState extends State<MascotApp> {
 
   Future<void> _updateWindowSize() async {
     final width = _mainWidth + _childWidth * _children.length;
+    debugPrint('[Spawn] Resizing window to ${width}x$_windowHeight (children=${_children.length})');
     await windowManager.setSize(Size(width, _windowHeight));
+    final actual = await windowManager.getSize();
+    debugPrint('[Spawn] Window size after resize: $actual');
   }
 
   @override
@@ -259,6 +271,7 @@ class _MascotAppState extends State<MascotApp> {
       );
     }
 
+    debugPrint('[Build] children=${_children.length}');
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -280,7 +293,7 @@ class _MascotAppState extends State<MascotApp> {
               child: MascotWidget(
                 key: ValueKey(_children[i].signalDir),
                 controller: _children[i].controller,
-                onDismissComplete: () => _removeChild(i),
+                onDismissComplete: () => _removeChildBySignalDir(_children[i].signalDir),
               ),
             ),
         ],

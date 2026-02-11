@@ -29,6 +29,7 @@ class WanderController extends ChangeNotifier {
 
   // --- Reverse scheduling ---
   Timer? _reverseTimer;
+  Timer? _pauseTimer;
 
   // --- Bounce ---
   late final Ticker _bounceTicker;
@@ -190,7 +191,7 @@ class WanderController extends ChangeNotifier {
 
     // Pause 0.5 to 2 seconds
     final pauseMs = 500 + _rng.nextInt(1501);
-    Timer(Duration(milliseconds: pauseMs), () {
+    _pauseTimer = Timer(Duration(milliseconds: pauseMs), () {
       _facingLeft = goLeft;
       _speed = _randomSpeed();
       _isPaused = false;
@@ -237,6 +238,7 @@ class WanderController extends ChangeNotifier {
   void dispose() {
     _moveTimer?.cancel();
     _reverseTimer?.cancel();
+    _pauseTimer?.cancel();
     _sparkleOnTimer?.cancel();
     _sparkleOffTimer?.cancel();
     _armTimer?.cancel();

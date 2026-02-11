@@ -227,11 +227,26 @@ class _MascotWidgetState extends State<MascotWidget>
     }
   }
 
+  Map<String, double>? _lastWanderOverrides;
+
   void _onWanderChanged() {
     if (!mounted) return;
-    // Sync wander parameter overrides (sparkles, arm) to MascotController
-    _controller.setWanderOverrides(_wander!.parameterOverrides);
+    // Only sync parameter overrides when sparkles/arm actually changed
+    final overrides = _wander!.parameterOverrides;
+    if (!_mapEquals(overrides, _lastWanderOverrides)) {
+      _lastWanderOverrides = overrides;
+      _controller.setWanderOverrides(overrides);
+    }
+    // Rebuild for bounce/squish transform (lightweight setState only)
     setState(() {});
+  }
+
+  static bool _mapEquals(Map<String, double> a, Map<String, double>? b) {
+    if (b == null || a.length != b.length) return false;
+    for (final entry in a.entries) {
+      if (b[entry.key] != entry.value) return false;
+    }
+    return true;
   }
 
   void _onBubblesChanged() {
