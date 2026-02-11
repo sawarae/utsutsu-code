@@ -44,7 +44,7 @@ class WanderController extends ChangeNotifier {
   Timer? _sparkleOffTimer;
 
   // --- Arm/item ---
-  String _armState = 'empty'; // 'empty' | 'broom' | 'luggage'
+  String _armState = 'luggage'; // 'empty' | 'broom' | 'luggage'
   Timer? _armTimer;
 
   // --- Public getters ---
@@ -112,9 +112,8 @@ class WanderController extends ChangeNotifier {
     _x = _rng.nextDouble() * (_screenWidth - windowWidth);
     _facingLeft = _rng.nextBool();
 
-    // Position the window above the Dock (macOS) or taskbar
-    final dockOffset = Platform.isMacOS ? 80.0 : 0.0;
-    _y = display.size.height - windowHeight - dockOffset;
+    // Position the window at the bottom of the screen
+    _y = display.size.height - windowHeight;
     await windowManager.setPosition(Offset(_x, _y));
 
     // Start movement timer (~30fps)

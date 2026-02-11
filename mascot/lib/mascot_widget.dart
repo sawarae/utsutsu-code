@@ -414,8 +414,8 @@ class _MascotWidgetState extends State<MascotWidget>
       child: result,
     );
 
-    // Layer 3: Horizontal flip when facing left
-    if (wander.facingLeft) {
+    // Layer 3: Horizontal flip when facing right (model default faces left)
+    if (!wander.facingLeft) {
       result = Transform.flip(
         flipX: true,
         child: result,
