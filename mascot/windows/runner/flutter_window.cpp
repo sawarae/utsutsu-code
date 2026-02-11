@@ -167,14 +167,22 @@ void FlutterWindow::UpdateClickThrough() {
       SetWindowLong(hwnd, GWL_EXSTYLE, exStyle & ~WS_EX_TRANSPARENT);
     }
 
-    // Start native drag on new left-button press over opaque pixel
+    // Start native drag on new left-button press over opaque pixel,
+    // but skip the close button region so Flutter can handle it.
     bool mouse_just_pressed = mouse_is_down && !mouse_was_down_;
     if (mouse_just_pressed) {
-      is_dragging_ = true;
-      ReleaseCapture();
-      // Enter the modal window-move loop. Returns when user releases button.
-      SendMessage(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
-      is_dragging_ = false;
+      int local_x = cursor.x - rect.left;
+      int local_y = cursor.y - rect.top;
+      // Close button: left=228, top=0, size=36x36 (Windows only)
+      bool in_close_btn = local_x >= 228 && local_x < 264 &&
+                          local_y >= 0 && local_y < 36;
+      if (!in_close_btn) {
+        is_dragging_ = true;
+        ReleaseCapture();
+        // Enter the modal window-move loop. Returns when user releases button.
+        SendMessage(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+        is_dragging_ = false;
+      }
     }
   }
 
