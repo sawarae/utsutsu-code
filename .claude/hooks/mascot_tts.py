@@ -13,7 +13,7 @@ Engine selection priority:
 
 Usage:
   python3 .claude/hooks/mascot_tts.py --emotion KEY "message"
-  python3 ~/.claude/hooks/mascot_tts.py --emotion KEY "message"
+  python3 ~/.claude/hooks/mascot_tts.py --signal-dir DIR --emotion KEY "message"
 """
 
 import json
@@ -35,6 +35,7 @@ DEFAULT_MESSAGE = "Task completed"
 MAX_MESSAGE_LENGTH = 30
 SIGNAL_DIR = os.path.expanduser("~/.claude/utsutsu-code")
 SIGNAL_FILE = os.path.join(SIGNAL_DIR, "mascot_speaking")
+MUTE_FILE = os.path.join(SIGNAL_DIR, "tts_muted")
 
 # Default ports
 COEIROINK_PORT = 50032
@@ -66,7 +67,7 @@ def load_config():
     if not os.path.exists(config_path):
         return {}
     config = {}
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith("#"):
@@ -86,7 +87,12 @@ def write_signal(text, emotion=None):
         signal = json.dumps({"message": text, "emotion": emotion})
     else:
         signal = text
-    Path(SIGNAL_FILE).write_text(signal)
+    Path(SIGNAL_FILE).write_text(signal, encoding="utf-8")
+
+
+def is_muted():
+    """Check if TTS audio is muted."""
+    return os.path.exists(MUTE_FILE)
 
 
 def clear_signal():
@@ -97,17 +103,73 @@ def clear_signal():
         pass
 
 
-def notify_osascript(message):
-    """Fallback: show macOS notification."""
-    subprocess.run(
-        [
-            "osascript",
-            "-e",
-            f'display notification "{message}" with title "Mascot TTS"',
-        ],
-        check=False,
-        timeout=3,
-    )
+def notify_fallback(message):
+    """Fallback: show platform-native notification."""
+    if sys.platform == "darwin":
+        # Escape backslashes and double quotes for osascript
+        safe = message.replace("\\", "\\\\").replace('"', '\\"')
+        subprocess.run(
+            [
+                "osascript",
+                "-e",
+                f'display notification "{safe}" with title "Mascot TTS"',
+            ],
+            check=False,
+            timeout=3,
+        )
+    elif sys.platform == "win32":
+        # Use -EncodedCommand to avoid all quoting/escaping issues
+        script = (
+            "Add-Type -AssemblyName System.Windows.Forms; "
+            "$n = New-Object System.Windows.Forms.NotifyIcon; "
+            "$n.Icon = [System.Drawing.SystemIcons]::Information; "
+            "$n.Visible = $true; "
+            "$n.ShowBalloonTip(3000, 'Mascot TTS', "
+            f"$env:MASCOT_MSG, "
+            "[System.Windows.Forms.ToolTipIcon]::Info); "
+            "Start-Sleep -Milliseconds 3000; "
+            "$n.Dispose()"
+        )
+        import base64
+        encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+        env = {**os.environ, "MASCOT_MSG": message}
+        subprocess.run(
+            ["powershell", "-EncodedCommand", encoded],
+            check=False,
+            timeout=5,
+            env=env,
+        )
+    else:
+        # Linux: notify-send
+        subprocess.run(
+            ["notify-send", "Mascot TTS", message],
+            check=False,
+            timeout=3,
+        )
+
+
+def _play_wav(wav_path):
+    """Play a WAV file using the platform's native player."""
+    if sys.platform == "darwin":
+        subprocess.run(["afplay", wav_path], timeout=5, check=False)
+    elif sys.platform == "win32":
+        # Use -EncodedCommand + env var to avoid path injection
+        import base64
+        script = (
+            "(New-Object System.Media.SoundPlayer($env:MASCOT_WAV))"
+            ".PlaySync()"
+        )
+        encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+        env = {**os.environ, "MASCOT_WAV": wav_path}
+        subprocess.run(
+            ["powershell", "-EncodedCommand", encoded],
+            check=False,
+            timeout=5,
+            env=env,
+        )
+    else:
+        # Linux
+        subprocess.run(["aplay", wav_path], timeout=5, check=False)
 
 
 # ── Adapters ──────────────────────────────────────────────────
@@ -176,7 +238,7 @@ class CoeiroinkAdapter:
 
         try:
             write_signal(text, emotion)
-            subprocess.run(["afplay", wav_path], timeout=5, check=False)
+            _play_wav(wav_path)
         finally:
             clear_signal()
             os.unlink(wav_path)
@@ -260,7 +322,7 @@ class VoicevoxAdapter:
 
         try:
             write_signal(text, emotion)
-            subprocess.run(["afplay", wav_path], timeout=5, check=False)
+            _play_wav(wav_path)
         finally:
             clear_signal()
             os.unlink(wav_path)
@@ -327,12 +389,68 @@ def main():
     except (json.JSONDecodeError, EOFError):
         hook_input = {}
 
-    # Parse --emotion KEY from argv
+    # Parse named flags from argv
     emotion = None
+    signal_dir = None
+    dismiss = False
+    spawn = False
+    spawn_model = None
     argv = sys.argv[1:]
-    if len(argv) >= 2 and argv[0] == "--emotion":
-        emotion = argv[1]
-        argv = argv[2:]
+    filtered = []
+    i = 0
+    while i < len(argv):
+        if argv[i] == "--emotion" and i + 1 < len(argv):
+            emotion = argv[i + 1]
+            i += 2
+        elif argv[i] == "--signal-dir" and i + 1 < len(argv):
+            signal_dir = os.path.expanduser(argv[i + 1])
+            i += 2
+        elif argv[i] == "--dismiss":
+            dismiss = True
+            i += 1
+        elif argv[i] == "--spawn":
+            spawn = True
+            i += 1
+        elif argv[i] == "--spawn-model" and i + 1 < len(argv):
+            spawn_model = argv[i + 1]
+            i += 2
+        else:
+            filtered.append(argv[i])
+            i += 1
+    argv = filtered
+
+    # Override global signal paths if --signal-dir specified
+    if signal_dir:
+        global SIGNAL_DIR, SIGNAL_FILE, MUTE_FILE
+        SIGNAL_DIR = signal_dir
+        SIGNAL_FILE = os.path.join(signal_dir, "mascot_speaking")
+        MUTE_FILE = os.path.join(signal_dir, "tts_muted")
+
+    # Dismiss: write dismiss signal and exit
+    if dismiss:
+        dismiss_path = os.path.join(SIGNAL_DIR, "mascot_dismiss")
+        os.makedirs(SIGNAL_DIR, exist_ok=True)
+        Path(dismiss_path).write_text("dismiss", encoding="utf-8")
+        print(json.dumps({"status": "dismissed", "signal_dir": SIGNAL_DIR}))
+        return
+
+    # Spawn: write spawn_child signal to PARENT mascot's signal dir
+    if spawn:
+        if not signal_dir:
+            print(json.dumps({"status": "error", "error": "--signal-dir required with --spawn"}))
+            return
+        # Always write to the default (parent) signal dir, not the overridden one
+        parent_dir = os.path.expanduser("~/.claude/utsutsu-code")
+        spawn_signal = os.path.join(parent_dir, "spawn_child")
+        os.makedirs(parent_dir, exist_ok=True)
+        payload = {"signal_dir": signal_dir}
+        if spawn_model:
+            payload["model"] = spawn_model
+        Path(spawn_signal).write_text(json.dumps(payload), encoding="utf-8")
+        # Ensure the child signal dir exists
+        os.makedirs(signal_dir, exist_ok=True)
+        print(json.dumps({"status": "spawned", "signal_dir": signal_dir}))
+        return
 
     # Custom message from argv, stdin JSON, or default
     if argv:
@@ -344,16 +462,22 @@ def main():
 
     config = load_config()
     result = {"status": "unknown"}
+    muted = is_muted()
 
     try:
-        adapter = resolve_adapter(config)
+        if muted:
+            logging.info("TTS muted, signal-only")
+            adapter = NoneAdapter()
+        else:
+            adapter = resolve_adapter(config)
         engine_name = type(adapter).__name__.replace("Adapter", "").lower()
 
         if isinstance(adapter, NoneAdapter):
             adapter.synthesize_and_play(message, emotion)
-            notify_osascript(message)
+            if not muted:
+                notify_fallback(message)
             result = {
-                "status": "fallback",
+                "status": "muted" if muted else "fallback",
                 "engine": "none",
                 "message": message,
             }
@@ -369,7 +493,7 @@ def main():
                     result["emotion"] = emotion
                 logging.info("TTS playback complete via %s", engine_name)
             else:
-                notify_osascript(message)
+                notify_fallback(message)
                 result = {
                     "status": "fallback",
                     "reason": "speaker_not_found",
@@ -379,10 +503,11 @@ def main():
                 logging.warning("Speaker not found in %s", engine_name)
     except Exception as e:
         logging.error("TTS failed: %s", e)
-        try:
-            notify_osascript(message)
-        except Exception:
-            pass
+        if not muted:
+            try:
+                notify_fallback(message)
+            except Exception:
+                pass
         result = {"status": "error", "error": str(e), "message": message}
 
     print(json.dumps(result))

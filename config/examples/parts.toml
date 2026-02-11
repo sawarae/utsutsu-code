@@ -1,0 +1,54 @@
+# Parts Model Configuration Example
+# Copy to assets/models/parts/emotions.toml
+
+[model]
+name = "Parts Model Example"
+idle_emotion = "Gentle"
+
+[camera]
+zoom = 0.132
+y = -60.0
+
+[mouth]
+param = "MouthType"
+open_value = 0.429
+
+[fallback]
+mouth_open = "assets/fallback/mouth_open.png"
+mouth_closed = "assets/fallback/mouth_closed.png"
+
+[defaults]
+EyebrowType = 0.0
+EyeType = 0.333
+MouthType = 0.0
+CheekType = 0.0
+
+[emotions.Gentle]
+EyebrowType = 0.0
+EyeType = 0.333
+MouthType = 0.0
+CheekType = 0.0
+
+[emotions.Joy]
+EyebrowType = 0.333
+EyeType = 0.5
+MouthType = 0.286
+CheekType = 0.333
+
+[emotions.Blush]
+EyebrowType = 0.5
+EyeType = 0.833
+MouthType = 0.143
+CheekType = 0.333
+
+[emotions.Trouble]
+EyebrowType = 0.5
+EyeType = 0.333
+MouthType = 1.0
+CheekType = 0.0
+
+[emotions.Singing]
+EyebrowType = 0.0
+EyeType = 0.333
+MouthType = 0.571
+CheekType = 0.333

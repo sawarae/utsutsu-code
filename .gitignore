@@ -46,11 +46,17 @@ app.*.map.json
 *.inp
 *.inx
 mascot/assets/**/*.png
-mascot/assets/models/
+mascot/assets/models/**
+!mascot/assets/models/
+!mascot/assets/models/*/
+!mascot/assets/models/**/emotions.toml
+!mascot/assets/models/**/.gitkeep
 mascot/assets/fallback/
 
-# TTS user config
+# Claude
 .claude/hooks/tts_config.toml
+.claude/settings.json
+.claude/settings.local.json
 
 # CocoaPods
 mascot/macos/Pods/
