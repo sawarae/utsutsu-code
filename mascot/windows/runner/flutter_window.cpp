@@ -176,6 +176,18 @@ void FlutterWindow::UpdateClickThrough() {
   bool transparent = IsTransparentAtCursor();
   bool mouse_is_down = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
 
+  // Close button region: never enable click-through so Flutter can handle it.
+  // Scale logical coordinates (228,0,264,36) by DPI factor for physical pixels.
+  int local_x = cursor.x - rect.left;
+  int local_y = cursor.y - rect.top;
+  double dpi_scale = GetDpiForWindow(hwnd) / 96.0;
+  int btn_left = static_cast<int>(228 * dpi_scale);
+  int btn_right = static_cast<int>(264 * dpi_scale);
+  int btn_bottom = static_cast<int>(36 * dpi_scale);
+  bool in_close_btn = local_x >= btn_left && local_x < btn_right &&
+                      local_y >= 0 && local_y < btn_bottom;
+  if (in_close_btn) transparent = false;
+
   LONG exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
 
   if (transparent) {
@@ -193,11 +205,6 @@ void FlutterWindow::UpdateClickThrough() {
     // but skip the close button region so Flutter can handle it.
     bool mouse_just_pressed = mouse_is_down && !mouse_was_down_;
     if (mouse_just_pressed) {
-      int local_x = cursor.x - rect.left;
-      int local_y = cursor.y - rect.top;
-      // Close button: left=228, top=0, size=36x36 (Windows only)
-      bool in_close_btn = local_x >= 228 && local_x < 264 &&
-                          local_y >= 0 && local_y < 36;
       if (!in_close_btn) {
         is_dragging_ = true;
         ReleaseCapture();
