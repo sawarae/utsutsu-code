@@ -10,18 +10,23 @@ class MascotController extends ChangeNotifier {
   final String _signalPath;
   final String _listeningPath;
   final String _dismissPath;
+  final String _kyuuklarinPath;
   late final ModelConfig _modelConfig;
 
   bool _isSpeaking = false;
   bool _isListening = false;
   bool _directExpression = false;
   bool _dismissed = false;
+  bool _kyuuklarin = false;
   String _message = '';
   String? _currentEmotion;
   Map<String, double> _wanderOverrides = {};
 
   /// True when a dismiss signal has been received.
   bool get isDismissed => _dismissed;
+
+  /// True when a kyuuklarin animation has been triggered.
+  bool get isKyuuklarin => _kyuuklarin;
 
   late final Map<String, double> _parameters;
 
@@ -48,7 +53,8 @@ class MascotController extends ChangeNotifier {
   MascotController._fromDir(String dir, {String? modelsDir, String? model})
       : _signalPath = '$dir/mascot_speaking',
         _listeningPath = '$dir/mascot_listening',
-        _dismissPath = '$dir/mascot_dismiss' {
+        _dismissPath = '$dir/mascot_dismiss',
+        _kyuuklarinPath = '$dir/mascot_kyuuklarin' {
     _modelConfig = ModelConfig.fromEnvironment(
       modelsDir: modelsDir,
       model: model,
@@ -61,7 +67,8 @@ class MascotController extends ChangeNotifier {
   @visibleForTesting
   MascotController.withConfig(this._signalPath, ModelConfig config)
       : _listeningPath = '${File(_signalPath).parent.path}/mascot_listening',
-        _dismissPath = '${File(_signalPath).parent.path}/mascot_dismiss' {
+        _dismissPath = '${File(_signalPath).parent.path}/mascot_dismiss',
+        _kyuuklarinPath = '${File(_signalPath).parent.path}/mascot_kyuuklarin' {
     _modelConfig = config;
     _parameters = Map<String, double>.from(_modelConfig.defaultParameters);
     _setEmotion(null); // Apply idle emotion
@@ -92,6 +99,20 @@ class MascotController extends ChangeNotifier {
       _dismissed = true;
       notifyListeners();
       return;
+    }
+
+    // Check kyuuklarin signal (one-shot: consume and notify)
+    final kyuuFile = File(_kyuuklarinPath);
+    if (kyuuFile.existsSync()) {
+      try {
+        kyuuFile.deleteSync();
+      } catch (_) {}
+      _kyuuklarin = true;
+      notifyListeners();
+      // Reset after widget handles it
+      Future.delayed(const Duration(milliseconds: 50), () {
+        _kyuuklarin = false;
+      });
     }
 
     // Skip signal file polling while a direct expression is active
@@ -255,7 +276,7 @@ class MascotController extends ChangeNotifier {
 
   /// Remove stale signal files on shutdown.
   void _cleanup() {
-    for (final path in [_signalPath, _listeningPath, _dismissPath]) {
+    for (final path in [_signalPath, _listeningPath, _dismissPath, _kyuuklarinPath]) {
       try {
         final file = File(path);
         if (file.existsSync()) file.deleteSync();
