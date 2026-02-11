@@ -315,11 +315,11 @@ class _MascotWidgetState extends State<MascotWidget>
                 ? _wander!.windowHeight.toDouble()
                 : 528.0;
 
-            // Position bubble near the character head in wander mode.
-            // The character renders in the lower portion of the window
-            // due to small zoom, so place bubble ~40% from top.
+            // Position bubble near the top of the window in wander mode.
+            // The character renders in the lower ~60% of the window
+            // due to small zoom, so place bubble ~10% from top.
             final wanderBubbleTop = _isWander
-                ? (charH * 0.40).roundToDouble()
+                ? (charH * 0.10).roundToDouble()
                 : 0.0;
 
             return Stack(
@@ -392,7 +392,7 @@ class _MascotWidgetState extends State<MascotWidget>
                   _isWander
                       ? Positioned(
                           left: 4,
-                          top: wanderBubbleTop - (i + 1) * 30.0,
+                          top: (wanderBubbleTop - (i + 1) * 30.0).clamp(0.0, wanderBubbleTop),
                           right: 4,
                           child: _WanderBubble(
                             text: _expressionService.activeBubbles[i].text,
