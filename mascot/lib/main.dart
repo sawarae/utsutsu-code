@@ -17,9 +17,10 @@ void main(List<String> args) async {
   final windowOptions = WindowOptions(
     size: windowSize,
     // On macOS, window_manager handles transparency via NSWindow.
-    // On Windows, transparency is handled by SetWindowCompositionAttribute
-    // in C++ (flutter_window.cpp); setting these here would conflict.
-    backgroundColor: Platform.isWindows ? null : Colors.transparent,
+    // On Windows, DwmExtendFrameIntoClientArea in C++ (flutter_window.cpp)
+    // creates the glass region; Flutter must also set transparent background
+    // so that alpha=0 pixels pass through to the DWM compositor.
+    backgroundColor: Colors.transparent,
     titleBarStyle:
         Platform.isWindows ? TitleBarStyle.normal : TitleBarStyle.hidden,
     skipTaskbar: false,
@@ -27,9 +28,7 @@ void main(List<String> args) async {
   );
 
   windowManager.waitUntilReadyToShow(windowOptions, () async {
-    if (!Platform.isWindows) {
-      await windowManager.setBackgroundColor(Colors.transparent);
-    }
+    await windowManager.setBackgroundColor(Colors.transparent);
 
     // Position at bottom-left of screen
     final primaryDisplay = await screenRetriever.getPrimaryDisplay();

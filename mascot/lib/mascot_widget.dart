@@ -2,6 +2,7 @@ import 'dart:io' as io;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:utsutsu2d/utsutsu2d.dart';
 
 import 'mascot_controller.dart';
@@ -17,6 +18,8 @@ class MascotWidget extends StatefulWidget {
 
 class _MascotWidgetState extends State<MascotWidget>
     with SingleTickerProviderStateMixin {
+  static const _clickThroughChannel = MethodChannel('mascot/click_through');
+
   MascotController get _controller => widget.controller;
   late final AnimationController _fadeController;
   bool _showBubble = false;
@@ -24,6 +27,9 @@ class _MascotWidgetState extends State<MascotWidget>
 
   PuppetController? _puppetController;
   bool _modelLoaded = false;
+
+  /// Key for the speech bubble to measure its actual size.
+  final _bubbleKey = GlobalKey();
 
   @override
   void initState() {
@@ -34,6 +40,10 @@ class _MascotWidgetState extends State<MascotWidget>
     );
     _controller.addListener(_onControllerChanged);
     _loadModel();
+    // Push initial opaque regions after first frame renders
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pushOpaqueRegions();
+    });
   }
 
   Future<void> _loadModel() async {
@@ -92,10 +102,34 @@ class _MascotWidgetState extends State<MascotWidget>
     pc.updateManual();
   }
 
+  /// Push opaque regions to the native side for click-through hit testing.
+  /// Called on init and whenever the bubble state changes.
+  void _pushOpaqueRegions() {
+    if (!io.Platform.isWindows) return;
+
+    final regions = <Map<String, double>>[
+      // Character: 264x528 at bottom-left (full window height)
+      {'x': 0.0, 'y': 0.0, 'w': 264.0, 'h': 528.0},
+    ];
+
+    if (_showBubble) {
+      // Measure actual bubble size if available, otherwise use generous estimate
+      final bubbleBox =
+          _bubbleKey.currentContext?.findRenderObject() as RenderBox?;
+      final bubbleH = bubbleBox?.size.height ?? 120.0;
+      // Bubble: Positioned(left: 170, top: 40, right: 0) → x=150 to include tail
+      regions.add({'x': 150.0, 'y': 40.0, 'w': 274.0, 'h': bubbleH + 20});
+    }
+
+    _clickThroughChannel.invokeMethod('setOpaqueRegions', regions);
+  }
+
   void _onControllerChanged() {
     if (_modelLoaded) {
       _syncParameters();
     }
+
+    final bubbleChanged = _showBubble != _controller.isSpeaking;
 
     if (_controller.isSpeaking && _controller.message.isNotEmpty) {
       if (!_showBubble || _bubbleText != _controller.message) {
@@ -112,7 +146,15 @@ class _MascotWidgetState extends State<MascotWidget>
             _showBubble = false;
             _bubbleText = '';
           });
+          _pushOpaqueRegions();
         }
+      });
+    }
+
+    if (bubbleChanged && _showBubble) {
+      // Push after frame so bubble size is measured
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _pushOpaqueRegions();
       });
     }
   }
@@ -149,6 +191,7 @@ class _MascotWidgetState extends State<MascotWidget>
                     top: 40,
                     right: 0,
                     child: FadeTransition(
+                      key: _bubbleKey,
                       opacity: _fadeController,
                       child: _SpeechBubble(text: _bubbleText),
                     ),

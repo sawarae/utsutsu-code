@@ -6,38 +6,6 @@
 
 #include "flutter/generated_plugin_registrant.h"
 
-// PW_RENDERFULLCONTENT captures DWM-composited content including alpha.
-// Available on Windows 8.1+. Define if the SDK header doesn't provide it.
-#ifndef PW_RENDERFULLCONTENT
-#define PW_RENDERFULLCONTENT 0x00000002
-#endif
-
-// --- Undocumented SetWindowCompositionAttribute API for transparency ---
-typedef enum {
-  ACCENT_DISABLED = 0,
-  ACCENT_ENABLE_GRADIENT = 1,
-  ACCENT_ENABLE_TRANSPARENTGRADIENT = 2,
-  ACCENT_ENABLE_BLURBEHIND = 3,
-  ACCENT_ENABLE_ACRYLICBLURBEHIND = 4,
-} ACCENT_STATE;
-
-struct ACCENT_POLICY {
-  ACCENT_STATE AccentState;
-  DWORD AccentFlags;
-  DWORD GradientColor;  // AABBGGRR
-  DWORD AnimationId;
-};
-
-// WCA_ACCENT_POLICY = 19
-struct WINDOWCOMPOSITIONATTRIBDATA {
-  DWORD Attrib;
-  PVOID pvData;
-  SIZE_T cbData;
-};
-
-typedef BOOL(WINAPI* pfnSetWindowCompositionAttribute)(
-    HWND, WINDOWCOMPOSITIONATTRIBDATA*);
-
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
 
@@ -64,16 +32,46 @@ bool FlutterWindow::OnCreate() {
   // -- Transparent window setup --
   HWND hwnd = GetHandle();
 
-  // Use SetWindowCompositionAttribute for true per-pixel transparency.
-  // GradientColor=0x00000000 ensures no tint; AccentFlags=2 avoids border.
-  auto SetWindowCompositionAttribute =
-      reinterpret_cast<pfnSetWindowCompositionAttribute>(GetProcAddress(
-          GetModuleHandle(L"user32.dll"), "SetWindowCompositionAttribute"));
-  if (SetWindowCompositionAttribute) {
-    ACCENT_POLICY accent = {ACCENT_ENABLE_TRANSPARENTGRADIENT, 2, 0, 0};
-    WINDOWCOMPOSITIONATTRIBDATA data = {19, &accent, sizeof(accent)};
-    SetWindowCompositionAttribute(hwnd, &data);
-  }
+  // Extend DWM frame into the entire client area for per-pixel transparency.
+  MARGINS margins = {-1, -1, -1, -1};
+  DwmExtendFrameIntoClientArea(hwnd, &margins);
+
+  // Set up MethodChannel for Dart to push opaque regions.
+  // Dart sends a list of {x, y, w, h} maps in logical coordinates.
+  channel_ = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+      flutter_controller_->engine()->messenger(),
+      "mascot/click_through",
+      &flutter::StandardMethodCodec::GetInstance());
+
+  channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                 result) {
+        if (call.method_name() == "setOpaqueRegions") {
+          opaque_regions_.clear();
+          const auto* args = std::get_if<flutter::EncodableList>(
+              call.arguments());
+          if (args) {
+            for (const auto& item : *args) {
+              const auto& map = std::get<flutter::EncodableMap>(item);
+              opaque_regions_.push_back({
+                  std::get<double>(
+                      map.at(flutter::EncodableValue("x"))),
+                  std::get<double>(
+                      map.at(flutter::EncodableValue("y"))),
+                  std::get<double>(
+                      map.at(flutter::EncodableValue("w"))),
+                  std::get<double>(
+                      map.at(flutter::EncodableValue("h"))),
+              });
+            }
+          }
+          regions_initialized_ = true;
+          result->Success();
+        } else {
+          result->NotImplemented();
+        }
+      });
 
   // Start click-through polling timer (50ms, matching macOS interval)
   SetTimer(hwnd, kClickThroughTimerId, 50, nullptr);
@@ -118,6 +116,10 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
 
   switch (message) {
+    case WM_ERASEBKGND:
+      // Suppress default background erase to prevent black flash in the
+      // DWM glass region. Flutter paints the entire client area.
+      return 1;
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
       break;
@@ -151,23 +153,31 @@ void FlutterWindow::UpdateClickThrough() {
     return;
   }
 
-  bool transparent = IsTransparentAtCursor();
+  // Convert physical pixel position to Flutter logical coordinates
+  int local_x = cursor.x - rect.left;
+  int local_y = cursor.y - rect.top;
+  double dpi = static_cast<double>(GetDpiForWindow(hwnd));
+  double scale = dpi / 96.0;
+  double logical_x = local_x / scale;
+  double logical_y = local_y / scale;
+
+  bool transparent = !IsPointInOpaqueRegion(logical_x, logical_y);
   bool mouse_is_down = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
 
   LONG exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
 
   if (transparent) {
-    // Transparent pixel - enable click-through
+    // Transparent region - enable click-through
     if (!(exStyle & WS_EX_TRANSPARENT)) {
       SetWindowLong(hwnd, GWL_EXSTYLE, exStyle | WS_EX_TRANSPARENT);
     }
   } else {
-    // Opaque pixel - disable click-through
+    // Opaque region - disable click-through
     if (exStyle & WS_EX_TRANSPARENT) {
       SetWindowLong(hwnd, GWL_EXSTYLE, exStyle & ~WS_EX_TRANSPARENT);
     }
 
-    // Start native drag on new left-button press over opaque pixel
+    // Start native drag on new left-button press over opaque region
     bool mouse_just_pressed = mouse_is_down && !mouse_was_down_;
     if (mouse_just_pressed) {
       is_dragging_ = true;
@@ -181,62 +191,14 @@ void FlutterWindow::UpdateClickThrough() {
   mouse_was_down_ = mouse_is_down;
 }
 
-bool FlutterWindow::IsTransparentAtCursor() {
-  HWND hwnd = GetHandle();
+bool FlutterWindow::IsPointInOpaqueRegion(double lx, double ly) const {
+  // Before Dart sends regions, treat entire window as opaque (no click-through)
+  if (!regions_initialized_) return true;
 
-  POINT cursor;
-  GetCursorPos(&cursor);
-
-  RECT rect;
-  GetWindowRect(hwnd, &rect);
-
-  int local_x = cursor.x - rect.left;
-  int local_y = cursor.y - rect.top;
-  int width = rect.right - rect.left;
-  int height = rect.bottom - rect.top;
-
-  if (width <= 0 || height <= 0) return true;
-  if (local_x < 0 || local_x >= width || local_y < 0 || local_y >= height) {
-    return true;
+  for (const auto& r : opaque_regions_) {
+    if (lx >= r.x && lx < r.x + r.w && ly >= r.y && ly < r.y + r.h) {
+      return true;
+    }
   }
-
-  // Create a 32-bit top-down DIB section for alpha-aware pixel reading
-  BITMAPINFOHEADER bmi = {};
-  bmi.biSize = sizeof(BITMAPINFOHEADER);
-  bmi.biWidth = width;
-  bmi.biHeight = -height;  // negative = top-down
-  bmi.biPlanes = 1;
-  bmi.biBitCount = 32;
-  bmi.biCompression = BI_RGB;
-
-  void* bits = nullptr;
-  HDC screen_dc = GetDC(nullptr);
-  HDC mem_dc = CreateCompatibleDC(screen_dc);
-  HBITMAP dib = CreateDIBSection(mem_dc, reinterpret_cast<BITMAPINFO*>(&bmi),
-                                  DIB_RGB_COLORS, &bits, nullptr, 0);
-
-  if (!dib || !bits) {
-    if (dib) DeleteObject(dib);
-    DeleteDC(mem_dc);
-    ReleaseDC(nullptr, screen_dc);
-    return true;
-  }
-
-  HBITMAP old_bitmap = static_cast<HBITMAP>(SelectObject(mem_dc, dib));
-
-  // Capture window content including DWM-composited alpha
-  PrintWindow(hwnd, mem_dc, PW_RENDERFULLCONTENT);
-
-  // Read alpha at cursor position (DIB pixel format: BGRA)
-  BYTE* pixel =
-      static_cast<BYTE*>(bits) + (local_y * width + local_x) * 4;
-  BYTE alpha = pixel[3];
-
-  // Cleanup
-  SelectObject(mem_dc, old_bitmap);
-  DeleteObject(dib);
-  DeleteDC(mem_dc);
-  ReleaseDC(nullptr, screen_dc);
-
-  return alpha < 10;
+  return false;
 }
