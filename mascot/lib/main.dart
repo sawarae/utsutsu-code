@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
@@ -12,16 +14,22 @@ void main(List<String> args) async {
   await windowManager.ensureInitialized();
 
   const windowSize = Size(424, 528);
-  const windowOptions = WindowOptions(
+  final windowOptions = WindowOptions(
     size: windowSize,
-    // Do not set backgroundColor here; transparency is handled
-    // by SetWindowCompositionAttribute in C++ (flutter_window.cpp).
-    // Do not set titleBarStyle; WS_POPUP in C++ already removes the frame.
+    // On macOS, window_manager handles transparency via NSWindow.
+    // On Windows, transparency is handled by SetWindowCompositionAttribute
+    // in C++ (flutter_window.cpp); setting these here would conflict.
+    backgroundColor: Platform.isWindows ? null : Colors.transparent,
+    titleBarStyle:
+        Platform.isWindows ? TitleBarStyle.normal : TitleBarStyle.hidden,
     skipTaskbar: false,
     alwaysOnTop: true,
   );
 
   windowManager.waitUntilReadyToShow(windowOptions, () async {
+    if (!Platform.isWindows) {
+      await windowManager.setBackgroundColor(Colors.transparent);
+    }
 
     // Position at bottom-left of screen
     final primaryDisplay = await screenRetriever.getPrimaryDisplay();
