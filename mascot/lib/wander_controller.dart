@@ -40,6 +40,8 @@ class WanderController extends ChangeNotifier {
   double _velocityX = 0;
   double _velocityY = 0;
   Timer? _inertiaTimer;
+  // Manual velocity tracking (Flutter reports 0 when window moves with finger)
+  final List<(int, double, double)> _dragSamples = []; // (ms, x, y)
 
   // --- Bounce ---
   late final Ticker _bounceTicker;
@@ -262,13 +264,17 @@ class WanderController extends ChangeNotifier {
 
   // --- Drag support ---
 
-  /// Called when drag starts. Pauses autonomous movement.
+  /// Called when drag starts. Pauses autonomous movement and animation.
   void startDrag() {
     _isDragging = true;
+    _dragSamples.clear();
     _moveTimer?.cancel();
     _reverseTimer?.cancel();
     _pauseTimer?.cancel();
+    _decelerationTimer?.cancel();
     _inertiaTimer?.cancel();
+    _bounceTicker.stop();
+    _bouncePhase = 0;
     _isPaused = true;
     notifyListeners();
   }
@@ -279,15 +285,39 @@ class WanderController extends ChangeNotifier {
     _y += delta.dy;
     _x = _x.clamp(0.0, _screenWidth - windowWidth);
     _y = _y.clamp(0.0, _screenHeight - windowHeight);
+
+    // Record sample for manual velocity estimation
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _dragSamples.add((now, _x, _y));
+    if (_dragSamples.length > 5) _dragSamples.removeAt(0);
+
     _updateWindowPosition();
     notifyListeners();
   }
 
-  /// Called when drag ends. Applies inertia based on velocity.
-  void endDrag(double velX, double velY) {
+  /// Called when drag ends. Computes velocity from recent drag samples
+  /// and applies inertia physics.
+  void endDrag() {
     _isDragging = false;
-    _velocityX = velX / 30; // Convert px/sec to px/tick (33ms)
-    _velocityY = velY / 30;
+    _inertiaTimer?.cancel();
+
+    // Compute velocity from recent position samples
+    double computedVelX = 0;
+    double computedVelY = 0;
+    if (_dragSamples.length >= 2) {
+      final first = _dragSamples.first;
+      final last = _dragSamples.last;
+      final dtMs = last.$1 - first.$1;
+      if (dtMs > 0) {
+        // px/sec
+        computedVelX = (last.$2 - first.$2) / dtMs * 1000;
+        computedVelY = (last.$3 - first.$3) / dtMs * 1000;
+      }
+    }
+    _dragSamples.clear();
+
+    _velocityX = computedVelX / 30; // Convert px/sec to px/tick (33ms)
+    _velocityY = computedVelY / 30;
 
     if (_velocityX.abs() > 0.5) {
       _facingLeft = _velocityX < 0;
@@ -333,7 +363,8 @@ class WanderController extends ChangeNotifier {
         timer.cancel();
         _y = bottomY;
         _isPaused = false;
-        // Resume autonomous wandering
+        // Resume bounce animation and autonomous wandering
+        if (!_bounceTicker.isActive) _bounceTicker.start();
         _moveTimer = Timer.periodic(
           const Duration(milliseconds: 33),
           (_) => _tick(),
@@ -347,6 +378,7 @@ class WanderController extends ChangeNotifier {
   // --- Collision detection ---
 
   /// Resolve collision with another mascot window (AABB).
+  // TODO: Wire up from parent mascot to detect overlapping child windows.
   bool resolveCollision(double otherX, double otherY, double otherW, double otherH) {
     final myRight = _x + windowWidth;
     final myBottom = _y + windowHeight;

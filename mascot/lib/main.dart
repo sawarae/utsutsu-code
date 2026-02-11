@@ -38,10 +38,11 @@ void main(List<String> args) async {
     await windowManager.setBackgroundColor(Colors.transparent);
 
     // Hide traffic light buttons in wander mode (macOS)
+    // Disable window-level dragging so Flutter GestureDetector handles it
     if (config.wander && Platform.isMacOS) {
       await windowManager.setClosable(false);
       await windowManager.setMinimizable(false);
-      // setMaximizable is not available; hidden titleBar already hides zoom
+      await windowManager.setMovable(false);
     }
 
     if (!config.wander) {

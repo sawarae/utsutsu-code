@@ -34,6 +34,7 @@ class MascotWidget extends StatefulWidget {
 class _MascotWidgetState extends State<MascotWidget>
     with TickerProviderStateMixin {
   static const _clickThroughChannel = MethodChannel('mascot/click_through');
+  static const _nativeDragChannel = MethodChannel('mascot/native_drag');
 
   // Close button position/size in logical coordinates.
   // Must match kCloseBtn* constants in flutter_window.h.
@@ -86,6 +87,10 @@ class _MascotWidgetState extends State<MascotWidget>
     _controller.addListener(_onControllerChanged);
     _wander?.addListener(_onWanderChanged);
     _loadModel();
+    // In wander mode, disable native window dragging so Flutter handles it
+    if (_isWander && io.Platform.isMacOS) {
+      _nativeDragChannel.invokeMethod('setEnabled', false);
+    }
     // Push initial opaque regions after first frame renders
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _pushOpaqueRegions();
@@ -328,27 +333,28 @@ class _MascotWidgetState extends State<MascotWidget>
                         child: child,
                       );
                     },
-                    child: _buildWanderWrapper(
-                      child: SizedBox(
-                        width: charW,
-                        height: charH,
-                        child: GestureDetector(
-                          onSecondaryTap: () {
-                            _jumpController.forward(from: 0);
-                            _expressionService.expressRandom();
-                          },
-                          onPanStart: _isWander
-                              ? (_) => _wander!.startDrag()
-                              : null,
-                          onPanUpdate: _isWander
-                              ? (details) => _wander!.updateDrag(details.delta)
-                              : null,
-                          onPanEnd: _isWander
-                              ? (details) => _wander!.endDrag(
-                                    details.velocity.pixelsPerSecond.dx,
-                                    details.velocity.pixelsPerSecond.dy,
-                                  )
-                              : null,
+                    child: SizedBox(
+                      width: charW,
+                      height: charH,
+                      child: GestureDetector(
+                        // Opaque hit testing so drags work on transparent areas
+                        behavior: _isWander
+                            ? HitTestBehavior.opaque
+                            : HitTestBehavior.deferToChild,
+                        onSecondaryTap: () {
+                          _jumpController.forward(from: 0);
+                          _expressionService.expressRandom();
+                        },
+                        onPanStart: _isWander
+                            ? (_) => _wander!.startDrag()
+                            : null,
+                        onPanUpdate: _isWander
+                            ? (details) => _wander!.updateDrag(details.delta)
+                            : null,
+                        onPanEnd: _isWander
+                            ? (details) => _wander!.endDrag()
+                            : null,
+                        child: _buildWanderWrapper(
                           child: _buildCharacter(),
                         ),
                       ),
