@@ -62,10 +62,16 @@ class ModelConfig {
     return ModelConfig.fromDirectory(dirPath);
   }
 
-  /// Resolve default models dir relative to the running executable.
+  /// Resolve default models dir.
+  ///
+  /// Tries in order:
+  /// 1. `data/models` next to the executable (release/distribution builds)
+  /// 2. `assets/models` relative to CWD (debug via `flutter run`)
   static String _defaultModelsDir() {
     final exeDir = File(Platform.resolvedExecutable).parent.path;
-    return '$exeDir/data/models';
+    final releaseDir = '$exeDir/data/models';
+    if (Directory(releaseDir).existsSync()) return releaseDir;
+    return 'assets/models';
   }
 
   static ModelConfig _fromToml(String dirPath, Map<String, dynamic> toml) {
