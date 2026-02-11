@@ -31,6 +31,8 @@ class WanderController extends ChangeNotifier {
   // --- Reverse scheduling ---
   Timer? _reverseTimer;
   Timer? _pauseTimer;
+  Timer? _decelerationTimer;
+  double _speedMultiplier = 1.0;
 
   // --- Bounce ---
   late final Ticker _bounceTicker;
@@ -62,10 +64,8 @@ class WanderController extends ChangeNotifier {
   (double, double) get squishScale {
     if (_isPaused) return (1.0, 1.0);
     final t = sin(_bouncePhase);
-    // scaleX: wider at bottom (t=-1 → 1.07), narrower at top (t=1 → 0.93)
-    final sx = 1.0 - 0.07 * t;
-    // scaleY: taller at top (t=1 → 1.07), shorter at bottom (t=-1 → 0.93)
-    final sy = 1.0 + 0.07 * t;
+    final sx = 1.0 - 0.03 * t;
+    final sy = 1.0 + 0.03 * t;
     return (sx, sy);
   }
 
@@ -143,8 +143,8 @@ class WanderController extends ChangeNotifier {
   void _tick() {
     if (_isPaused) return;
 
-    // Move
-    final dx = _facingLeft ? -_speed : _speed;
+    // Move (scaled by deceleration/acceleration multiplier)
+    final dx = (_facingLeft ? -_speed : _speed) * _speedMultiplier;
     _x += dx;
 
     // Clamp and bounce off edges
@@ -186,18 +186,46 @@ class WanderController extends ChangeNotifier {
   }
 
   void _startPause({required bool goLeft}) {
-    _isPaused = true;
     _reverseTimer?.cancel();
-    notifyListeners();
+    _decelerationTimer?.cancel();
+    _pauseTimer?.cancel();
 
-    // Pause 0.5 to 2 seconds
-    final pauseMs = 500 + _rng.nextInt(1501);
-    _pauseTimer = Timer(Duration(milliseconds: pauseMs), () {
-      _facingLeft = goLeft;
-      _speed = _randomSpeed();
-      _isPaused = false;
+    // Phase 1: Decelerate over ~200ms (6 steps × 33ms)
+    const steps = 6;
+    var step = 0;
+    _decelerationTimer = Timer.periodic(const Duration(milliseconds: 33), (timer) {
+      step++;
+      _speedMultiplier = (1.0 - step / steps).clamp(0.0, 1.0);
       notifyListeners();
-      _scheduleReverse();
+      if (step >= steps) {
+        timer.cancel();
+        _isPaused = true;
+        notifyListeners();
+
+        // Phase 2: Brief pause (200-500ms)
+        final pauseMs = 200 + _rng.nextInt(301);
+        _pauseTimer = Timer(Duration(milliseconds: pauseMs), () {
+          _facingLeft = goLeft;
+          _speed = _randomSpeed();
+          _isPaused = false;
+
+          // Phase 3: Accelerate over ~200ms
+          var accelStep = 0;
+          _decelerationTimer = Timer.periodic(const Duration(milliseconds: 33), (timer) {
+            accelStep++;
+            _speedMultiplier = (accelStep / steps).clamp(0.0, 1.0);
+            notifyListeners();
+            if (accelStep >= steps) {
+              timer.cancel();
+              _speedMultiplier = 1.0;
+              notifyListeners();
+            }
+          });
+
+          notifyListeners();
+          _scheduleReverse();
+        });
+      }
     });
   }
 
@@ -240,6 +268,7 @@ class WanderController extends ChangeNotifier {
     _moveTimer?.cancel();
     _reverseTimer?.cancel();
     _pauseTimer?.cancel();
+    _decelerationTimer?.cancel();
     _sparkleOnTimer?.cancel();
     _sparkleOffTimer?.cancel();
     _armTimer?.cancel();
