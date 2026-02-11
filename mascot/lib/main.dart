@@ -30,10 +30,10 @@ void main(List<String> args) async {
   windowManager.waitUntilReadyToShow(windowOptions, () async {
     await windowManager.setBackgroundColor(Colors.transparent);
 
-    // Position at bottom-left of screen
+    // Position at bottom of screen (default: left edge)
     final primaryDisplay = await screenRetriever.getPrimaryDisplay();
     final screenSize = primaryDisplay.size;
-    final x = 0.0;
+    final x = config.offsetX ?? 0.0;
     final y = screenSize.height - windowSize.height;
     await windowManager.setPosition(Offset(x, y));
 
@@ -48,8 +48,9 @@ class _AppConfig {
   final String? modelsDir;
   final String? model;
   final String? signalDir;
+  final double? offsetX;
 
-  const _AppConfig({this.modelsDir, this.model, this.signalDir});
+  const _AppConfig({this.modelsDir, this.model, this.signalDir, this.offsetX});
 }
 
 /// Simple `--key value` argument parser (no external packages).
@@ -57,6 +58,7 @@ _AppConfig _parseArgs(List<String> args) {
   String? modelsDir;
   String? model;
   String? signalDir;
+  double? offsetX;
 
   for (var i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -66,10 +68,17 @@ _AppConfig _parseArgs(List<String> args) {
         if (i + 1 < args.length) model = args[++i];
       case '--signal-dir':
         if (i + 1 < args.length) signalDir = args[++i];
+      case '--offset-x':
+        if (i + 1 < args.length) offsetX = double.tryParse(args[++i]);
     }
   }
 
-  return _AppConfig(modelsDir: modelsDir, model: model, signalDir: signalDir);
+  return _AppConfig(
+    modelsDir: modelsDir,
+    model: model,
+    signalDir: signalDir,
+    offsetX: offsetX,
+  );
 }
 
 class MascotApp extends StatefulWidget {
