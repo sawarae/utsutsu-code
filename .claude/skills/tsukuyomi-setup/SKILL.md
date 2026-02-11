@@ -90,22 +90,7 @@ curl -s --connect-timeout 2 http://localhost:50032/v1/speakers > /dev/null 2>&1 
 ### Step 2: つくよみちゃんスピーカー確認
 
 ```bash
-curl -s http://localhost:50032/v1/speakers | python3 -c "
-import json, sys
-speakers = json.load(sys.stdin)
-found = False
-for s in speakers:
-    if 'つくよみ' in s.get('speakerName', ''):
-        styles = ', '.join(f'{st[\"styleName\"]}(id={st[\"styleId\"]})' for st in s['styles'])
-        print(f'Found: {s[\"speakerName\"]} (uuid={s[\"speakerUuid\"]})')
-        print(f'  Styles: {styles}')
-        found = True
-if not found:
-    print('つくよみちゃん not found. Install voice data in COEIROINK v2.')
-    print('Available speakers:')
-    for s in speakers:
-        print(f'  {s[\"speakerName\"]}')
-"
+python3 .claude/skills/tsukuyomi-setup/setup_helper.py check-speakers
 ```
 
 つくよみちゃんのデフォルトスタイル:
@@ -141,7 +126,7 @@ ln -sf "$(pwd)/.claude/hooks/mascot_tts.py" ~/.claude/hooks/mascot_tts.py
 ln -sf "$(pwd)/.claude/hooks/tts_config.toml" ~/.claude/hooks/tts_config.toml 2>/dev/null || \
   cp .claude/hooks/tts_config.toml ~/.claude/hooks/tts_config.toml
 # スキル
-for skill in tsukuyomi-setup tsukuyomi-cleanup tts tts-debug; do
+for skill in tts mute; do
   ln -sf "$(pwd)/.claude/skills/$skill" ~/.claude/skills/$skill
 done
 ```
@@ -155,7 +140,7 @@ mkdir -p ~/.claude/hooks ~/.claude/skills
 cp .claude/hooks/mascot_tts.py ~/.claude/hooks/mascot_tts.py
 cp .claude/hooks/tts_config.toml ~/.claude/hooks/tts_config.toml 2>/dev/null || true
 # スキル
-for skill in tsukuyomi-setup tsukuyomi-cleanup tts tts-debug; do
+for skill in tts mute; do
   cp -r ".claude/skills/$skill" ~/.claude/skills/
 done
 ```
@@ -197,18 +182,7 @@ cd mascot && make setup-models
 mkdir -p mascot/assets/models/blend_shape mascot/assets/models/parts
 cp -n mascot/config/examples/blend_shape.toml mascot/assets/models/blend_shape/emotions.toml 2>/dev/null || true
 cp -n mascot/config/examples/parts.toml mascot/assets/models/parts/emotions.toml 2>/dev/null || true
-curl -sL "https://api.github.com/repos/sawarae/utsutsu2d/releases/tags/v0.01" | \
-  python3 -c "
-import json, sys, urllib.request
-release = json.load(sys.stdin)
-for asset in release['assets']:
-    url = asset['browser_download_url']
-    name = asset['name']
-    if name.endswith('.inp'):
-        print(f'Downloading {name}...')
-        urllib.request.urlretrieve(url, 'mascot/assets/models/blend_shape/' + name)
-        print(f'  Saved to mascot/assets/models/blend_shape/{name}')
-"
+python3 .claude/skills/tsukuyomi-setup/setup_helper.py download-models
 ```
 
 utsutsu2d モデルファイルがある場合（リネーム不要、`emotions.toml` の `[model] file` でファイル名を指定済み）:
@@ -224,7 +198,6 @@ cp /path/to/tsukuyomi_parts.inp mascot/assets/models/parts/
 # プロジェクトのディスパッチャ経由
 python3 .claude/hooks/mascot_tts.py --emotion Gentle "つくよみちゃんのテストです"
 python3 .claude/hooks/mascot_tts.py --emotion Joy "テスト成功だよ"
-python3 .claude/hooks/mascot_tts.py --emotion Trouble "テスト失敗だよ"
 
 # グローバルhook経由
 python3 ~/.claude/hooks/mascot_tts.py --emotion Gentle "グローバルフックのテスト"
@@ -248,27 +221,15 @@ cd mascot && flutter run -d macos
 
 1. GitHub Releases からダウンロードを案内する:
 ```bash
-# 最新リリースのダウンロードURLを取得
-curl -sL "https://api.github.com/repos/sawarae/utsutsu-code/releases/latest" | \
-  python3 -c "
-import json, sys
-release = json.load(sys.stdin)
-print(f'Latest release: {release[\"tag_name\"]}')
-for asset in release['assets']:
-    if asset['name'].endswith('.zip') and 'windows' in asset['name']:
-        print(f'Download: {asset[\"browser_download_url\"]}')
-        print(f'  Size: {asset[\"size\"] // 1024 // 1024} MB')
-"
+python3 .claude/skills/tsukuyomi-setup/setup_helper.py check-release
 ```
 
-2. ユーザーにダウンロード・展開・起動を案内する:
-   - zip をダウンロードして任意の場所に展開
-   - `mascot.exe` を起動
+2. コマンド出力はツール結果に折りたたまれてユーザーに見えないため、出力からダウンロードURLを取り出して**テキストで改めて表示**し、以下の手順を案内する:
+   1. 表示したURLからzipファイルをダウンロード
+   2. zipを右クリック →「すべて展開」で解凍（ダブルクリックで中身を見るだけでは動かない）
+   3. 展開されたフォルダ内の `mascot.exe` をダブルクリックして起動
 
-アプリが起動したら、別ターミナルでTTSテスト:
-```bash
-python3 .claude/hooks/mascot_tts.py --emotion Joy "マスコット動いてるよ"
-```
+アプリが起動したら、`/tts マスコット動いてるよ` で口パク・吹き出しの動作確認を案内する。
 
 確認ポイント:
 - 口パク（mouth_open/closed が150ms間隔で切り替わる）
@@ -277,36 +238,11 @@ python3 .claude/hooks/mascot_tts.py --emotion Joy "マスコット動いてる�
 
 ### Step 8: settings.json 確認
 
-#### プロジェクト設定（`.claude/settings.json`）
-
-セッション終了時に自動でTTSを発火するStop hookが設定されているか確認:
-```bash
-cat .claude/settings.json
-```
-
-期待される内容:
-```json
-{
-  "hooks": {
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ~/.claude/hooks/mascot_tts.py --emotion Joy \"タスク完了しました\"",
-            "timeout": 5000
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
 #### グローバル設定（`~/.claude/settings.json`）
 
-他のプロジェクトでもTTS通知を使うために、グローバル設定にも同じhookを追加する:
+Stop hookはグローバル設定に追加する。プロジェクト設定とグローバル設定の両方にStop hookがあると**二重起動**するため、**グローバルにのみ設定**すること。プロジェクト設定（`.claude/settings.json`）に `hooks.Stop` がある場合は削除する。
+
+グローバル設定にStop hookを追加する:
 ```bash
 cat ~/.claude/settings.json
 ```
@@ -314,9 +250,19 @@ cat ~/.claude/settings.json
 `hooks.Stop` セクションが無い、または `osascript` のみの場合は、上記と同じStop hookを追加する。
 
 **注意点:**
-- コマンドのパスは必ず `~/.claude/hooks/mascot_tts.py` を使う（相対パスだとCWDによって壊れる）
 - `timeout: 5000` を必ず設定する（TTSがClaude Codeをブロックしないように）
 - タイムアウト内訳: 可用性チェック(1秒) + 音声合成(4秒)。再生はバックグラウンド
+
+**Windows のパス解決:**
+
+hook runner は `~` を展開しない。以下の優先順位で対処する:
+1. **プロジェクト設定**: `bash -c 'python3 ~/.claude/hooks/mascot_tts.py ...'` でラップ（Git Bash 環境前提）
+2. **グローバル設定**: `python3 C:/Users/<username>/.claude/hooks/mascot_tts.py ...` と絶対パスを使う（PowerShell でも Git Bash でも動く）
+
+絶対パスの取得:
+```bash
+python3 -c "import os; print(os.path.expanduser('~').replace(chr(92), '/'))"
+```
 
 ### Step 9: グローバル CLAUDE.md の設定
 

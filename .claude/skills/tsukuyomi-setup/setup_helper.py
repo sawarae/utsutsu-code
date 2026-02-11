@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""Helper script for /tsukuyomi-setup skill.
+
+Subcommands:
+  check-speakers   - List speakers from COEIROINK v2 / VOICEVOX
+  check-release    - Show latest GitHub release info
+  download-models  - Download utsutsu2d model files
+
+All HTTP requests use urllib (no curl pipe needed).
+"""
+
+import json
+import sys
+import urllib.request
+
+COEIROINK_URL = "http://localhost:50032"
+RELEASE_API = "https://api.github.com/repos/sawarae/utsutsu-code/releases/latest"
+MODEL_RELEASE_API = (
+    "https://api.github.com/repos/sawarae/utsutsu2d/releases/tags/v0.01"
+)
+
+
+def check_speakers():
+    """List speakers from COEIROINK v2 and highlight つくよみちゃん."""
+    try:
+        with urllib.request.urlopen(
+            f"{COEIROINK_URL}/v1/speakers", timeout=5
+        ) as resp:
+            speakers = json.loads(resp.read())
+    except Exception as e:
+        print(f"ERROR: Cannot connect to COEIROINK v2 - {e}")
+        return 1
+
+    found = False
+    for s in speakers:
+        name = s.get("speakerName", "")
+        if "\u3064\u304f\u3088\u307f" in name:  # つくよみ
+            styles = ", ".join(
+                f'{st["styleName"]}(id={st["styleId"]})' for st in s["styles"]
+            )
+            print(f'Found: {name} (uuid={s["speakerUuid"]})')
+            print(f"  Styles: {styles}")
+            found = True
+
+    if not found:
+        print("つくよみちゃん not found. Install voice data in COEIROINK v2.")
+        print("Available speakers:")
+        for s in speakers:
+            print(f'  {s.get("speakerName", "?")}')
+        return 1
+
+    return 0
+
+
+def check_release():
+    """Show latest GitHub release with Windows zip download info."""
+    try:
+        req = urllib.request.Request(RELEASE_API)
+        req.add_header("User-Agent", "utsutsu-code-setup")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            release = json.loads(resp.read())
+    except Exception as e:
+        print(f"ERROR: Cannot fetch release info - {e}")
+        return 1
+
+    print(f'Latest release: {release["tag_name"]}')
+    for asset in release.get("assets", []):
+        if asset["name"].endswith(".zip"):
+            size_mb = asset["size"] // 1024 // 1024
+            print(f'  {asset["name"]} ({size_mb} MB)')
+            print(f'  Download: {asset["browser_download_url"]}')
+
+    return 0
+
+
+def download_models(dest="mascot/assets/models/blend_shape"):
+    """Download .inp model files from utsutsu2d release."""
+    try:
+        req = urllib.request.Request(MODEL_RELEASE_API)
+        req.add_header("User-Agent", "utsutsu-code-setup")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            release = json.loads(resp.read())
+    except Exception as e:
+        print(f"ERROR: Cannot fetch model release info - {e}")
+        return 1
+
+    downloaded = 0
+    for asset in release["assets"]:
+        url = asset["browser_download_url"]
+        name = asset["name"]
+        if name.endswith(".inp"):
+            print(f"Downloading {name}...")
+            urllib.request.urlretrieve(url, f"{dest}/{name}")
+            print(f"  Saved to {dest}/{name}")
+            downloaded += 1
+
+    if downloaded == 0:
+        print("No .inp files found in release")
+        return 1
+
+    print(f"Downloaded {downloaded} model(s)")
+    return 0
+
+
+COMMANDS = {
+    "check-speakers": check_speakers,
+    "check-release": check_release,
+    "download-models": download_models,
+}
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS:
+        print(f"Usage: {sys.argv[0]} <{'|'.join(COMMANDS)}>")
+        sys.exit(1)
+    sys.exit(COMMANDS[sys.argv[1]]())

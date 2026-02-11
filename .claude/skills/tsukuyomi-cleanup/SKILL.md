@@ -48,12 +48,12 @@ pkill -f "utsutsu_code"
 
 **Windows:**
 ```bash
-tasklist //FI "IMAGENAME eq mascot.exe" 2>/dev/null | grep -q mascot.exe && echo "RUNNING" || echo "NOT_RUNNING"
+powershell -c "if (Get-Process mascot -ErrorAction SilentlyContinue) { 'RUNNING' } else { 'NOT_RUNNING' }"
 ```
 
 停止する場合:
 ```bash
-taskkill //F //IM mascot.exe 2>/dev/null || true
+powershell -c "Stop-Process -Name mascot -Force -ErrorAction SilentlyContinue"
 ```
 
 `flutter run` が動いている場合も確認:
@@ -65,13 +65,12 @@ pgrep -f "flutter run" && echo "FLUTTER_RUN_ACTIVE" || echo "NOT_RUNNING"
 
 **Windows:**
 ```bash
-tasklist //FI "IMAGENAME eq dart.exe" 2>/dev/null | grep -q dart.exe && echo "FLUTTER_RUN_ACTIVE" || echo "NOT_RUNNING"
+powershell -c "if (Get-Process dart -ErrorAction SilentlyContinue) { 'FLUTTER_RUN_ACTIVE' } else { 'NOT_RUNNING' }"
 ```
 
 停止する場合:
 ```bash
-# Windows
-taskkill //F //IM dart.exe 2>/dev/null || true
+powershell -c "Stop-Process -Name dart -Force -ErrorAction SilentlyContinue"
 ```
 
 ### Step 2: シグナルファイルの削除
@@ -99,7 +98,7 @@ du -sh mascot/build 2>/dev/null || echo "NO_BUILD"
 
 **Windows:**
 ```bash
-powershell -c "if (Test-Path mascot\\build) { '{0:N2} MB' -f ((Get-ChildItem -Recurse mascot\\build | Measure-Object -Property Length -Sum).Sum / 1MB) } else { 'NO_BUILD' }"
+ls -d mascot/build 2>/dev/null && echo "HAS_BUILD" || echo "NO_BUILD"
 ```
 
 削除する場合:
@@ -140,14 +139,14 @@ ls -la ~/.claude/skills/ 2>/dev/null
 rm -f ~/.claude/hooks/mascot_tts.py
 rm -f ~/.claude/hooks/tts_config.toml
 
-# スキル（シンボリックリンクまたはコピーを削除、プロジェクト内の正のソースは残る）
-rm -rf ~/.claude/skills/tsukuyomi-setup
-rm -rf ~/.claude/skills/tsukuyomi-cleanup
+# スキル（グローバルにコピーされた tts, mute を削除。プロジェクト内の正のソースは残る）
 rm -rf ~/.claude/skills/tts
-rm -rf ~/.claude/skills/tts-debug
+rm -rf ~/.claude/skills/mute
 ```
 
-**注意:** フック削除でStop hookのTTS通知が動かなくなる。スキル削除で他プロジェクトからの `/tsukuyomi-setup` 等が使えなくなる。再セットアップには `/tsukuyomi-setup` を使う。
+**注意:** フック削除でStop hookのTTS通知が動かなくなる。スキル削除で他プロジェクトからの `/tts` `/mute` が使えなくなる。再セットアップには `/tsukuyomi-setup` を使う。
+
+**重要:** グローバルフック削除後、Stop hookがエラーを出し続ける。クリーンアップ完了時に「**Stop hookのエラーを止めるため、Claude Codeを再起動してください**」とユーザーに案内すること。
 
 ### Step 6: ローカル設定ファイルの削除
 

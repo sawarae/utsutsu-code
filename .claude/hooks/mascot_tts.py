@@ -67,7 +67,7 @@ def load_config():
     if not os.path.exists(config_path):
         return {}
     config = {}
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith("#"):
