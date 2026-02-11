@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'dart:math';
 
 import 'dart:ui' show Offset;
@@ -93,8 +94,8 @@ class WanderController extends ChangeNotifier {
 
   WanderController({
     int? seed,
-    this.windowWidth = 132,
-    this.windowHeight = 264,
+    this.windowWidth = 150,
+    this.windowHeight = 300,
   }) : _rng = Random(seed),
        _speed = 0 {
     _speed = _randomSpeed();
@@ -111,8 +112,9 @@ class WanderController extends ChangeNotifier {
     _x = _rng.nextDouble() * (_screenWidth - windowWidth);
     _facingLeft = _rng.nextBool();
 
-    // Position the window
-    _y = display.size.height - windowHeight;
+    // Position the window above the Dock (macOS) or taskbar
+    final dockOffset = Platform.isMacOS ? 80.0 : 0.0;
+    _y = display.size.height - windowHeight - dockOffset;
     await windowManager.setPosition(Offset(_x, _y));
 
     // Start movement timer (~30fps)

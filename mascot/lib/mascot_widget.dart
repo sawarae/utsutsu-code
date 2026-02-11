@@ -120,7 +120,12 @@ class _MascotWidgetState extends State<MascotWidget>
       // Set camera from model config
       final camera = pc.camera;
       if (camera != null) {
-        camera.zoom = config.cameraZoom;
+        var zoom = config.cameraZoom;
+        // Scale zoom for wander mode's smaller window
+        if (_isWander) {
+          zoom *= _wander!.windowWidth / 264.0;
+        }
+        camera.zoom = zoom;
         camera.position = Vec2(0, config.cameraY);
       }
 
@@ -185,6 +190,8 @@ class _MascotWidgetState extends State<MascotWidget>
           widget.onDismissComplete!();
         } else {
           windowManager.close();
+          // Fallback: force exit if windowManager.close() doesn't terminate
+          Future.delayed(const Duration(seconds: 1), () => io.exit(0));
         }
       });
       return;
@@ -347,7 +354,7 @@ class _MascotWidgetState extends State<MascotWidget>
                       showTail: i == 0,
                     ),
                   ),
-                if (io.Platform.isWindows)
+                if (io.Platform.isWindows && !_isWander)
                   Positioned(
                     top: _closeBtnTop,
                     left: _closeBtnLeft,

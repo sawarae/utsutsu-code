@@ -434,13 +434,15 @@ def main():
         print(json.dumps({"status": "dismissed", "signal_dir": SIGNAL_DIR}))
         return
 
-    # Spawn: write spawn_child signal to parent mascot and exit
+    # Spawn: write spawn_child signal to PARENT mascot's signal dir
     if spawn:
         if not signal_dir:
             print(json.dumps({"status": "error", "error": "--signal-dir required with --spawn"}))
             return
-        spawn_signal = os.path.join(SIGNAL_DIR, "spawn_child")
-        os.makedirs(SIGNAL_DIR, exist_ok=True)
+        # Always write to the default (parent) signal dir, not the overridden one
+        parent_dir = os.path.expanduser("~/.claude/utsutsu-code")
+        spawn_signal = os.path.join(parent_dir, "spawn_child")
+        os.makedirs(parent_dir, exist_ok=True)
         payload = {"signal_dir": signal_dir}
         if spawn_model:
             payload["model"] = spawn_model

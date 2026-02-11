@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Directory, File, Platform;
+import 'dart:io' show Directory, File, Platform, Process, ProcessStartMode;
 
 import 'package:flutter/material.dart';
 import 'package:screen_retriever/screen_retriever.dart';
@@ -16,9 +16,9 @@ void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
 
-  // Wander mode uses a smaller window (half size)
-  final defaultWidth = config.wander ? 132.0 : 424.0;
-  final defaultHeight = config.wander ? 264.0 : 528.0;
+  // Wander mode uses a smaller window (~57% of full size)
+  final defaultWidth = config.wander ? 150.0 : 424.0;
+  final defaultHeight = config.wander ? 300.0 : 528.0;
   final windowSize =
       Size(config.width ?? defaultWidth, config.height ?? defaultHeight);
   final windowOptions = WindowOptions(
@@ -36,6 +36,13 @@ void main(List<String> args) async {
 
   windowManager.waitUntilReadyToShow(windowOptions, () async {
     await windowManager.setBackgroundColor(Colors.transparent);
+
+    // Hide traffic light buttons in wander mode (macOS)
+    if (config.wander && Platform.isMacOS) {
+      await windowManager.setClosable(false);
+      await windowManager.setMinimizable(false);
+      // setMaximizable is not available; hidden titleBar already hides zoom
+    }
 
     if (!config.wander) {
       // Position at bottom of screen (default: left edge)
@@ -100,6 +107,8 @@ _AppConfig _parseArgs(List<String> args) {
         if (i + 1 < args.length) height = double.tryParse(args[++i]);
       case '--wander':
         wander = true;
+      case '--no-wander':
+        wander = false;
     }
   }
 
@@ -152,8 +161,8 @@ class _MascotAppState extends State<MascotApp> {
     );
 
     if (widget.config.wander) {
-      final windowW = widget.config.width ?? 132.0;
-      final windowH = widget.config.height ?? 264.0;
+      final windowW = widget.config.width ?? 150.0;
+      final windowH = widget.config.height ?? 300.0;
       _wanderController = WanderController(
         windowWidth: windowW,
         windowHeight: windowH,
@@ -184,46 +193,59 @@ class _MascotAppState extends State<MascotApp> {
     final file = File(_spawnSignalPath);
     if (!file.existsSync()) return;
 
-    debugPrint('[Spawn] Signal file found: $_spawnSignalPath');
     try {
       final content = file.readAsStringSync().trim();
       file.deleteSync();
-      debugPrint('[Spawn] Content: $content');
 
       final json = jsonDecode(content) as Map<String, dynamic>;
       final signalDir = json['signal_dir'] as String;
       final model = json['model'] as String? ?? 'blend_shape_mini';
-      debugPrint('[Spawn] signalDir=$signalDir model=$model');
+      final wander = json['wander'] as bool? ?? true;
 
       // Clean any stale dismiss file
       final dismissFile = File('$signalDir/mascot_dismiss');
-      if (dismissFile.existsSync()) {
-        dismissFile.deleteSync();
-        debugPrint('[Spawn] Cleaned stale dismiss file');
-      }
+      if (dismissFile.existsSync()) dismissFile.deleteSync();
 
       // Ensure signal dir exists
       Directory(signalDir).createSync(recursive: true);
 
-      debugPrint('[Spawn] Creating MascotController...');
-      final controller = MascotController(
-        signalDir: signalDir,
-        modelsDir: widget.config.modelsDir,
-        model: model,
-      );
-      debugPrint('[Spawn] MascotController created, model=${controller.modelConfig}');
-
-      setState(() {
-        _children.add(_ChildMascot(
+      if (wander) {
+        _spawnWanderProcess(signalDir, model);
+      } else {
+        final controller = MascotController(
           signalDir: signalDir,
-          controller: controller,
-        ));
-        debugPrint('[Spawn] Added child, total children=${_children.length}');
-      });
-      _updateWindowSize();
-    } catch (e, st) {
-      debugPrint('Failed to spawn child mascot: $e\n$st');
+          modelsDir: widget.config.modelsDir,
+          model: model,
+        );
+        setState(() {
+          _children.add(_ChildMascot(
+            signalDir: signalDir,
+            controller: controller,
+          ));
+        });
+        _updateWindowSize();
+      }
+    } catch (e) {
+      debugPrint('Failed to spawn child mascot: $e');
     }
+  }
+
+  void _spawnWanderProcess(String signalDir, String model) {
+    final exe = Platform.resolvedExecutable;
+    final args = [
+      '--wander',
+      '--signal-dir', signalDir,
+      '--model', model,
+    ];
+    // Pass models dir if specified
+    if (widget.config.modelsDir != null) {
+      args.addAll(['--models-dir', widget.config.modelsDir!]);
+    }
+    Process.start(exe, args, mode: ProcessStartMode.detached).then((process) {
+      debugPrint('Spawned wander mascot: pid=${process.pid}');
+    }).catchError((e) {
+      debugPrint('Failed to spawn wander mascot: $e');
+    });
   }
 
   void _removeChildBySignalDir(String signalDir) {
@@ -238,10 +260,7 @@ class _MascotAppState extends State<MascotApp> {
 
   Future<void> _updateWindowSize() async {
     final width = _mainWidth + _childWidth * _children.length;
-    debugPrint('[Spawn] Resizing window to ${width}x$_windowHeight (children=${_children.length})');
     await windowManager.setSize(Size(width, _windowHeight));
-    final actual = await windowManager.getSize();
-    debugPrint('[Spawn] Window size after resize: $actual');
   }
 
   @override
@@ -271,7 +290,6 @@ class _MascotAppState extends State<MascotApp> {
       );
     }
 
-    debugPrint('[Build] children=${_children.length}');
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
