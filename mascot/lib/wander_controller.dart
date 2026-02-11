@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'dart:io' show Platform;
+import 'dart:convert';
+import 'dart:io' show Directory, File, Platform;
 import 'dart:math';
 
 import 'dart:ui' show Offset;
@@ -18,6 +19,7 @@ class WanderController extends ChangeNotifier {
   final Random _rng;
   final double windowWidth;
   final double windowHeight;
+  final String? signalDir;
 
   // --- Movement state ---
   double _x = 0;
@@ -57,6 +59,10 @@ class WanderController extends ChangeNotifier {
   // --- Arm/item ---
   String _armState = 'luggage'; // 'empty' | 'broom' | 'luggage'
   Timer? _armTimer;
+
+  // --- Collision ---
+  int _tickCount = 0;
+  static const _collisionCheckInterval = 6; // every ~200ms at 30fps
 
   // --- Public getters ---
   bool get facingLeft => _facingLeft;
@@ -108,6 +114,7 @@ class WanderController extends ChangeNotifier {
     int? seed,
     this.windowWidth = 150,
     this.windowHeight = 350,
+    this.signalDir,
   }) : _rng = Random(seed),
        _speed = 0 {
     _speed = _randomSpeed();
@@ -170,6 +177,13 @@ class WanderController extends ChangeNotifier {
       _x = _screenWidth - windowWidth;
       _startPause(goLeft: true);
       return;
+    }
+
+    // Periodically broadcast position and check collisions
+    _tickCount++;
+    if (_tickCount % _collisionCheckInterval == 0) {
+      _broadcastPosition();
+      _checkCollisions();
     }
 
     _updateWindowPosition();
@@ -377,8 +391,43 @@ class WanderController extends ChangeNotifier {
 
   // --- Collision detection ---
 
+  /// Write this mascot's position to a signal file for siblings to read.
+  void _broadcastPosition() {
+    final dir = signalDir;
+    if (dir == null) return;
+    try {
+      File('$dir/mascot_position').writeAsStringSync(
+        '{"x":$_x,"y":$_y,"w":$windowWidth,"h":$windowHeight}',
+      );
+    } catch (_) {}
+  }
+
+  /// Scan sibling signal directories for position files and resolve collisions.
+  void _checkCollisions() {
+    final dir = signalDir;
+    if (dir == null) return;
+    final parentDir = Directory(dir).parent;
+    try {
+      for (final entity in parentDir.listSync()) {
+        if (entity is! Directory) continue;
+        if (entity.path == dir) continue;
+        final posFile = File('${entity.path}/mascot_position');
+        if (!posFile.existsSync()) continue;
+        try {
+          final data =
+              jsonDecode(posFile.readAsStringSync()) as Map<String, dynamic>;
+          resolveCollision(
+            (data['x'] as num).toDouble(),
+            (data['y'] as num).toDouble(),
+            (data['w'] as num?)?.toDouble() ?? 150,
+            (data['h'] as num?)?.toDouble() ?? 350,
+          );
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
   /// Resolve collision with another mascot window (AABB).
-  // TODO: Wire up from parent mascot to detect overlapping child windows.
   bool resolveCollision(double otherX, double otherY, double otherW, double otherH) {
     final myRight = _x + windowWidth;
     final myBottom = _y + windowHeight;
@@ -430,6 +479,13 @@ class WanderController extends ChangeNotifier {
     _sparkleOffTimer?.cancel();
     _armTimer?.cancel();
     _bounceTicker.dispose();
+    // Clean up position file
+    if (signalDir != null) {
+      try {
+        final f = File('$signalDir/mascot_position');
+        if (f.existsSync()) f.deleteSync();
+      } catch (_) {}
+    }
     super.dispose();
   }
 }
