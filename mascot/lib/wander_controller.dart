@@ -95,7 +95,7 @@ class WanderController extends ChangeNotifier {
   WanderController({
     int? seed,
     this.windowWidth = 150,
-    this.windowHeight = 300,
+    this.windowHeight = 350,
   }) : _rng = Random(seed),
        _speed = 0 {
     _speed = _randomSpeed();

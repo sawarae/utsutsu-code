@@ -301,7 +301,12 @@ class _MascotWidgetState extends State<MascotWidget>
           listenable: _controller,
           builder: (context, _) {
             final charW = _isWander ? _wander!.windowWidth : 264.0;
-            final charH = _isWander ? _wander!.windowHeight : 528.0;
+            // Wander mode: fill the entire window height so the
+            // character head sits near the top and the speech bubble
+            // (overlaid at top:0) appears right above it.
+            final charH = _isWander
+                ? _wander!.windowHeight.toDouble()
+                : 528.0;
             return Stack(
               children: [
                 Positioned(
@@ -331,29 +336,49 @@ class _MascotWidgetState extends State<MascotWidget>
                   ),
                 ),
                 if (_showBubble)
-                  Positioned(
-                    left: 170,
-                    top: 40,
-                    right: 0,
-                    child: FadeTransition(
-                      key: _bubbleKey,
-                      opacity: _fadeController,
-                      child: _SpeechBubble(text: _bubbleText),
-                    ),
-                  ),
+                  _isWander
+                      ? Positioned(
+                          left: 4,
+                          top: 0,
+                          right: 4,
+                          child: FadeTransition(
+                            key: _bubbleKey,
+                            opacity: _fadeController,
+                            child: _WanderBubble(text: _bubbleText),
+                          ),
+                        )
+                      : Positioned(
+                          left: 170,
+                          top: 40,
+                          right: 0,
+                          child: FadeTransition(
+                            key: _bubbleKey,
+                            opacity: _fadeController,
+                            child: _SpeechBubble(text: _bubbleText),
+                          ),
+                        ),
                 // Expression bubbles from right-click
                 for (var i = 0;
                     i < _expressionService.activeBubbles.length;
                     i++)
-                  Positioned(
-                    left: 170,
-                    top: 40.0 + i * 50.0,
-                    right: 0,
-                    child: _SpeechBubble(
-                      text: _expressionService.activeBubbles[i].text,
-                      showTail: i == 0,
-                    ),
-                  ),
+                  _isWander
+                      ? Positioned(
+                          left: 4,
+                          top: i * 30.0,
+                          right: 4,
+                          child: _WanderBubble(
+                            text: _expressionService.activeBubbles[i].text,
+                          ),
+                        )
+                      : Positioned(
+                          left: 170,
+                          top: 40.0 + i * 50.0,
+                          right: 0,
+                          child: _SpeechBubble(
+                            text: _expressionService.activeBubbles[i].text,
+                            showTail: i == 0,
+                          ),
+                        ),
                 if (io.Platform.isWindows && !_isWander)
                   Positioned(
                     top: _closeBtnTop,
@@ -594,6 +619,79 @@ class _BubbleTailPainter extends CustomPainter {
       ..moveTo(size.width, 0)
       ..lineTo(0, size.height)
       ..lineTo(size.width, size.height * 0.6)
+      ..close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// Compact speech bubble for wander mode, displayed above the character
+/// with a downward-pointing tail.
+class _WanderBubble extends StatelessWidget {
+  final String text;
+
+  const _WanderBubble({required this.text});
+
+  bool get _isLoading => text == ExpressionService.loadingMarker;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 3,
+                offset: Offset(0, 1),
+              ),
+            ],
+          ),
+          child: _isLoading
+              ? const SizedBox(
+                  width: 40,
+                  height: 10,
+                  child: _SquigglyLoader(),
+                )
+              : Text(
+                  text,
+                  style: const TextStyle(
+                    fontSize: 9,
+                    color: Colors.black87,
+                    decoration: TextDecoration.none,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+        ),
+        CustomPaint(
+          size: const Size(10, 6),
+          painter: _DownTailPainter(),
+        ),
+      ],
+    );
+  }
+}
+
+class _DownTailPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+
+    final path = Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width, 0)
+      ..lineTo(size.width / 2, size.height)
       ..close();
     canvas.drawPath(path, paint);
   }

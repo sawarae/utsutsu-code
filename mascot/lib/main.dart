@@ -18,7 +18,7 @@ void main(List<String> args) async {
 
   // Wander mode uses a smaller window (~57% of full size)
   final defaultWidth = config.wander ? 150.0 : 424.0;
-  final defaultHeight = config.wander ? 300.0 : 528.0;
+  final defaultHeight = config.wander ? 350.0 : 528.0;
   final windowSize =
       Size(config.width ?? defaultWidth, config.height ?? defaultHeight);
   final windowOptions = WindowOptions(
@@ -162,7 +162,7 @@ class _MascotAppState extends State<MascotApp> {
 
     if (widget.config.wander) {
       final windowW = widget.config.width ?? 150.0;
-      final windowH = widget.config.height ?? 300.0;
+      final windowH = widget.config.height ?? 350.0;
       _wanderController = WanderController(
         windowWidth: windowW,
         windowHeight: windowH,

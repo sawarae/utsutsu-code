@@ -65,23 +65,34 @@ sleep 3 && pgrep -f "utsutsu_code" | wc -l
 ### Step 3: サブエージェントからTTS送信
 
 Task tool でサブエージェントを起動し、子マスコットにTTSを送らせる。
+`SIGNAL_DIR` は Step 2 で取得した値に置き換える。
+
+**方法A: Task tool (推奨)**
 
 ```
 Task(
   description="Mascot TTS test",
-  subagent_type="Bash",
-  prompt="以下のコマンドを順番に実行してください:
-
+  subagent_type="general-purpose",
+  prompt="Run these bash commands in sequence and report results:
 1. echo 'サブエージェント開始'
-2. python3 ~/.claude/hooks/mascot_tts.py --signal-dir SIGNAL_DIR --emotion Gentle 'サブエージェントです' < /dev/null
+2. python3 ~/.claude/hooks/mascot_tts.py --signal-dir SIGNAL_DIR --emotion Gentle 'サブエージェントです'
 3. sleep 3
-4. python3 ~/.claude/hooks/mascot_tts.py --signal-dir SIGNAL_DIR --emotion Joy 'テスト完了です' < /dev/null
-
-各コマンドの結果を報告してください。"
+4. python3 ~/.claude/hooks/mascot_tts.py --signal-dir SIGNAL_DIR --emotion Joy 'テスト完了です'"
 )
 ```
 
-`SIGNAL_DIR` は Step 2 で取得した値に置き換える。
+**方法B: フォールバック（Task tool がエラーの場合）**
+
+Task tool が "Agent type 'undefined'" エラーを返す場合は、直接 Bash で実行する:
+
+```bash
+echo 'サブエージェント開始'
+python3 ~/.claude/hooks/mascot_tts.py --signal-dir SIGNAL_DIR --emotion Gentle 'サブエージェントです'
+sleep 3
+python3 ~/.claude/hooks/mascot_tts.py --signal-dir SIGNAL_DIR --emotion Joy 'テスト完了です'
+```
+
+※ フォールバックではサブエージェント分離のテストにはならないが、TTS→子マスコット表示のフローは検証できる。
 
 ### Step 4: 子マスコットをディスミス
 
