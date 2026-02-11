@@ -8,11 +8,25 @@ import 'mascot_controller.dart';
 import 'toml_parser.dart';
 import 'tts_service.dart';
 
-/// Coordinates right-click expression: phrase selection, expression display,
+/// A single speech bubble managed by [ExpressionService].
+class BubbleEntry {
+  final int id;
+  String text;
+  BubbleEntry(this.id, this.text);
+}
+
+/// Coordinates right-click expression: phrase generation, bubble management,
 /// TTS playback, and cleanup.
-class ExpressionService {
+///
+/// Extends [ChangeNotifier] so the widget can listen for bubble changes.
+/// Supports up to [maxBubbles] concurrent bubbles.
+class ExpressionService extends ChangeNotifier {
   /// Sentinel message shown while Haiku is generating a phrase.
   static const loadingMarker = '\x00loading';
+
+  /// Maximum number of concurrent bubbles.
+  static const maxBubbles = 2;
+
   final MascotController _controller;
   final TtsService _tts = TtsService();
   final Random _random = Random();
@@ -20,11 +34,12 @@ class ExpressionService {
   Map<String, List<String>> _phrases = {};
   Map<String, String> _labels = {};
   String? _haikuPromptTemplate;
-  bool _busy = false;
-  String? _pendingEmotion;
+
+  /// Currently active speech bubbles.
+  final List<BubbleEntry> activeBubbles = [];
+  int _nextBubbleId = 0;
 
   /// Emotion labels loaded from emotions.toml.
-  /// Falls back to emotion keys if labels are not defined.
   Map<String, String> get emotionLabels =>
       _labels.isNotEmpty ? Map.unmodifiable(_labels) : _fallbackLabels;
 
@@ -120,30 +135,30 @@ class ExpressionService {
     await express(emotion);
   }
 
-  /// Trigger an expression: show emotion + phrase, play TTS, then reset.
+  /// Trigger an expression with a concurrent bubble.
   ///
-  /// Shows a static phrase immediately for responsiveness, then generates
-  /// a dynamic phrase via Claude Haiku in the background. Once Haiku returns,
-  /// the bubble text is swapped and TTS plays the generated phrase.
-  /// Falls back to static TOML phrases on Haiku failure.
-  /// If already busy, queues one expression to play after the current one.
+  /// Each call creates an independent bubble that generates a phrase via
+  /// Claude Haiku, plays TTS, then removes itself. Up to [maxBubbles]
+  /// bubbles can be active simultaneously. The face expression updates
+  /// to the latest emotion.
   Future<void> express(String emotion) async {
-    if (_busy) {
-      _pendingEmotion = emotion;
-      return;
-    }
-    _busy = true;
+    if (activeBubbles.length >= maxBubbles) return;
+
+    final id = _nextBubbleId++;
+    final entry = BubbleEntry(id, loadingMarker);
+    activeBubbles.add(entry);
+    notifyListeners();
+
+    // Update face expression to latest emotion
+    _controller.showExpression(emotion, '');
 
     try {
-      // Show loading animation immediately
-      _controller.showExpression(emotion, loadingMarker);
-
       // Generate dynamic phrase, fall back to static
       final haikuPhrase = await _generatePhrase(emotion);
       final phrase = haikuPhrase ?? _pickStaticPhrase(emotion);
 
-      // Replace loading with actual text
-      _controller.showExpression(emotion, phrase);
+      entry.text = phrase;
+      notifyListeners();
 
       // Try TTS; if unavailable, show expression for a fixed duration
       final available = await _tts.isAvailable();
@@ -156,14 +171,11 @@ class ExpressionService {
         await Future<void>.delayed(const Duration(seconds: 6));
       }
     } finally {
-      _controller.hideExpression();
-      _busy = false;
+      activeBubbles.removeWhere((b) => b.id == id);
+      notifyListeners();
 
-      // Play queued expression if any
-      final next = _pendingEmotion;
-      _pendingEmotion = null;
-      if (next != null) {
-        express(next);
+      if (activeBubbles.isEmpty) {
+        _controller.hideExpression();
       }
     }
   }
@@ -230,7 +242,9 @@ class ExpressionService {
     return path;
   }
 
+  @override
   void dispose() {
     _tts.dispose();
+    super.dispose();
   }
 }

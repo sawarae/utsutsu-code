@@ -64,6 +64,7 @@ class _MascotWidgetState extends State<MascotWidget>
           weight: 70),
     ]).animate(_jumpController);
     _expressionService = ExpressionService(_controller);
+    _expressionService.addListener(_onBubblesChanged);
     _controller.addListener(_onControllerChanged);
     _loadModel();
     // Push initial opaque regions after first frame renders
@@ -147,6 +148,12 @@ class _MascotWidgetState extends State<MascotWidget>
       regions.add({'x': 150.0, 'y': 40.0, 'w': 274.0, 'h': bubbleH + 20});
     }
 
+    // Expression bubbles from right-click
+    for (var i = 0; i < _expressionService.activeBubbles.length; i++) {
+      final top = 40.0 + i * 50.0;
+      regions.add({'x': 150.0, 'y': top, 'w': 274.0, 'h': 60.0});
+    }
+
     _clickThroughChannel.invokeMethod('setOpaqueRegions', regions);
   }
 
@@ -188,9 +195,19 @@ class _MascotWidgetState extends State<MascotWidget>
     }
   }
 
+  void _onBubblesChanged() {
+    if (mounted) {
+      setState(() {});
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _pushOpaqueRegions();
+      });
+    }
+  }
+
   @override
   void dispose() {
     _controller.removeListener(_onControllerChanged);
+    _expressionService.removeListener(_onBubblesChanged);
     _expressionService.dispose();
     _fadeController.dispose();
     _jumpController.dispose();
@@ -240,6 +257,19 @@ class _MascotWidgetState extends State<MascotWidget>
                       key: _bubbleKey,
                       opacity: _fadeController,
                       child: _SpeechBubble(text: _bubbleText),
+                    ),
+                  ),
+                // Expression bubbles from right-click
+                for (var i = 0;
+                    i < _expressionService.activeBubbles.length;
+                    i++)
+                  Positioned(
+                    left: 170,
+                    top: 40.0 + i * 50.0,
+                    right: 0,
+                    child: _SpeechBubble(
+                      text: _expressionService.activeBubbles[i].text,
+                      showTail: i == 0,
                     ),
                   ),
                 if (io.Platform.isWindows)
@@ -308,8 +338,9 @@ class _MascotWidgetState extends State<MascotWidget>
 
 class _SpeechBubble extends StatelessWidget {
   final String text;
+  final bool showTail;
 
-  const _SpeechBubble({required this.text});
+  const _SpeechBubble({required this.text, this.showTail = true});
 
   bool get _isLoading => text == ExpressionService.loadingMarker;
 
@@ -319,13 +350,16 @@ class _SpeechBubble extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 12),
-          child: CustomPaint(
-            size: const Size(20, 14),
-            painter: _BubbleTailPainter(),
-          ),
-        ),
+        if (showTail)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: CustomPaint(
+              size: const Size(20, 14),
+              painter: _BubbleTailPainter(),
+            ),
+          )
+        else
+          const SizedBox(width: 20),
         Flexible(
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
