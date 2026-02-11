@@ -35,6 +35,7 @@ DEFAULT_MESSAGE = "Task completed"
 MAX_MESSAGE_LENGTH = 30
 SIGNAL_DIR = os.path.expanduser("~/.claude/utsutsu-code")
 SIGNAL_FILE = os.path.join(SIGNAL_DIR, "mascot_speaking")
+MUTE_FILE = os.path.join(SIGNAL_DIR, "tts_muted")
 
 # Default ports
 COEIROINK_PORT = 50032
@@ -87,6 +88,11 @@ def write_signal(text, emotion=None):
     else:
         signal = text
     Path(SIGNAL_FILE).write_text(signal)
+
+
+def is_muted():
+    """Check if TTS audio is muted."""
+    return os.path.exists(MUTE_FILE)
 
 
 def clear_signal():
@@ -399,16 +405,22 @@ def main():
 
     config = load_config()
     result = {"status": "unknown"}
+    muted = is_muted()
 
     try:
-        adapter = resolve_adapter(config)
+        if muted:
+            logging.info("TTS muted, signal-only")
+            adapter = NoneAdapter()
+        else:
+            adapter = resolve_adapter(config)
         engine_name = type(adapter).__name__.replace("Adapter", "").lower()
 
         if isinstance(adapter, NoneAdapter):
             adapter.synthesize_and_play(message, emotion)
-            notify_fallback(message)
+            if not muted:
+                notify_fallback(message)
             result = {
-                "status": "fallback",
+                "status": "muted" if muted else "fallback",
                 "engine": "none",
                 "message": message,
             }
@@ -434,10 +446,11 @@ def main():
                 logging.warning("Speaker not found in %s", engine_name)
     except Exception as e:
         logging.error("TTS failed: %s", e)
-        try:
-            notify_fallback(message)
-        except Exception:
-            pass
+        if not muted:
+            try:
+                notify_fallback(message)
+            except Exception:
+                pass
         result = {"status": "error", "error": str(e), "message": message}
 
     print(json.dumps(result))
