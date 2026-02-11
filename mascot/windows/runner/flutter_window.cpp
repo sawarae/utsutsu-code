@@ -134,8 +134,25 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  // Handle close button click natively.
+  // The child window returns HTTRANSPARENT so Flutter can't receive clicks
+  // directly - we detect the close button region and post WM_CLOSE.
+  if (message == WM_LBUTTONUP) {
+    // WM_LBUTTONUP lparam is in client (physical pixel) coordinates.
+    int px = GET_X_LPARAM(lparam);
+    int py = GET_Y_LPARAM(lparam);
+    double dpi = static_cast<double>(GetDpiForWindow(hwnd));
+    double scale = dpi / 96.0;
+    double lx = px / scale;
+    double ly = py / scale;
+    if (lx >= 228 && lx < 264 && ly >= 0 && ly < 36) {
+      PostMessage(hwnd, WM_CLOSE, 0, 0);
+      return 0;
+    }
+  }
+
   // Handle WM_NCHITTEST BEFORE Flutter to decide drag vs click-through.
-  // Opaque region -> HTCAPTION (drag-to-move) or HTCLIENT (close button).
+  // Opaque region -> HTCAPTION (drag-to-move).
   // Transparent region -> HTTRANSPARENT (click passes to window below).
   if (message == WM_NCHITTEST) {
     POINT pt = {GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
