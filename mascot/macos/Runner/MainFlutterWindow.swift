@@ -47,6 +47,16 @@ class MainFlutterWindow: NSWindow {
 
     super.awakeFromNib()
 
+    // Hide traffic light buttons in wander mode (must be after super.awakeFromNib)
+    if CommandLine.arguments.contains("--wander") {
+      self.styleMask.remove(.closable)
+      self.styleMask.remove(.miniaturizable)
+      self.styleMask.remove(.resizable)
+      self.standardWindowButton(.closeButton)?.isHidden = true
+      self.standardWindowButton(.miniaturizeButton)?.isHidden = true
+      self.standardWindowButton(.zoomButton)?.isHidden = true
+    }
+
     startClickThroughTracking()
   }
 

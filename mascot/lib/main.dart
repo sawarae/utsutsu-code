@@ -80,7 +80,7 @@ class _AppConfig {
     this.width,
     this.height,
     this.wander = false,
-    this.outline = false,
+    this.outline = true,
   });
 }
 
@@ -93,7 +93,7 @@ _AppConfig _parseArgs(List<String> args) {
   double? width;
   double? height;
   bool wander = false;
-  bool outline = false;
+  bool outline = true;
 
   for (var i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -115,6 +115,8 @@ _AppConfig _parseArgs(List<String> args) {
         wander = false;
       case '--outline':
         outline = true;
+      case '--no-outline':
+        outline = false;
     }
   }
 

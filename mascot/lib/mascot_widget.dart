@@ -519,7 +519,7 @@ class _MascotWidgetState extends State<MascotWidget>
       children: [
         // Layer 1: Black outline (outermost, largest dilation)
         ImageFiltered(
-          imageFilter: ui.ImageFilter.dilate(radiusX: 4, radiusY: 4),
+          imageFilter: ui.ImageFilter.dilate(radiusX: 6, radiusY: 6),
           child: ColorFiltered(
             colorFilter:
                 const ColorFilter.mode(Colors.black, ui.BlendMode.srcATop),
@@ -528,7 +528,7 @@ class _MascotWidgetState extends State<MascotWidget>
         ),
         // Layer 2: White border (smaller dilation)
         ImageFiltered(
-          imageFilter: ui.ImageFilter.dilate(radiusX: 2, radiusY: 2),
+          imageFilter: ui.ImageFilter.dilate(radiusX: 4, radiusY: 4),
           child: ColorFiltered(
             colorFilter:
                 const ColorFilter.mode(Colors.white, ui.BlendMode.srcATop),
