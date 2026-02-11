@@ -80,17 +80,21 @@ bool FlutterWindow::OnCreate() {
               call.arguments());
           if (args) {
             for (const auto& item : *args) {
-              const auto& map = std::get<flutter::EncodableMap>(item);
-              opaque_regions_.push_back({
-                  std::get<double>(
-                      map.at(flutter::EncodableValue("x"))),
-                  std::get<double>(
-                      map.at(flutter::EncodableValue("y"))),
-                  std::get<double>(
-                      map.at(flutter::EncodableValue("w"))),
-                  std::get<double>(
-                      map.at(flutter::EncodableValue("h"))),
-              });
+              try {
+                const auto& map = std::get<flutter::EncodableMap>(item);
+                opaque_regions_.push_back({
+                    std::get<double>(
+                        map.at(flutter::EncodableValue("x"))),
+                    std::get<double>(
+                        map.at(flutter::EncodableValue("y"))),
+                    std::get<double>(
+                        map.at(flutter::EncodableValue("w"))),
+                    std::get<double>(
+                        map.at(flutter::EncodableValue("h"))),
+                });
+              } catch (const std::exception&) {
+                continue;
+              }
             }
           }
           regions_initialized_ = true;

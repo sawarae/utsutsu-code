@@ -162,10 +162,11 @@ class TtsService {
     if (Platform.isMacOS) {
       await Process.run('afplay', [path]);
     } else if (Platform.isWindows) {
+      // Use environment variable to avoid PowerShell injection via path.
       await Process.run('powershell', [
         '-c',
-        "(New-Object System.Media.SoundPlayer('${path.replaceAll("'", "''")}')).PlaySync()",
-      ]);
+        r"(New-Object System.Media.SoundPlayer($env:MASCOT_WAV)).PlaySync()",
+      ], environment: {'MASCOT_WAV': path});
     } else {
       await Process.run('aplay', [path]);
     }

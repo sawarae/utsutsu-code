@@ -87,7 +87,7 @@ def write_signal(text, emotion=None):
         signal = json.dumps({"message": text, "emotion": emotion})
     else:
         signal = text
-    Path(SIGNAL_FILE).write_text(signal)
+    Path(SIGNAL_FILE).write_text(signal, encoding="utf-8")
 
 
 def is_muted():
