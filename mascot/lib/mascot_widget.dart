@@ -5,7 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
-import 'package:utsutsu2d/utsutsu2d.dart';
+import 'package:utsutsu2d/utsutsu2d.dart' hide Animation;
 import 'package:window_manager/window_manager.dart';
 
 import 'expression_service.dart';
@@ -21,7 +21,7 @@ class MascotWidget extends StatefulWidget {
 }
 
 class _MascotWidgetState extends State<MascotWidget>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static const _clickThroughChannel = MethodChannel('mascot/click_through');
 
   // Close button position/size in logical coordinates.
@@ -32,6 +32,8 @@ class _MascotWidgetState extends State<MascotWidget>
 
   MascotController get _controller => widget.controller;
   late final AnimationController _fadeController;
+  late final AnimationController _jumpController;
+  late final Animation<double> _jumpAnimation;
   late final ExpressionService _expressionService;
   bool _showBubble = false;
   String _bubbleText = '';
@@ -49,6 +51,18 @@ class _MascotWidgetState extends State<MascotWidget>
       vsync: this,
       duration: const Duration(milliseconds: 1000),
     );
+    _jumpController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _jumpAnimation = TweenSequence<double>([
+      TweenSequenceItem(
+          tween: Tween<double>(begin: 0, end: -20), weight: 30),
+      TweenSequenceItem(
+          tween: Tween<double>(begin: -20, end: 0)
+              .chain(CurveTween(curve: Curves.bounceOut)),
+          weight: 70),
+    ]).animate(_jumpController);
     _expressionService = ExpressionService(_controller);
     _controller.addListener(_onControllerChanged);
     _loadModel();
@@ -179,6 +193,7 @@ class _MascotWidgetState extends State<MascotWidget>
     _controller.removeListener(_onControllerChanged);
     _expressionService.dispose();
     _fadeController.dispose();
+    _jumpController.dispose();
     _puppetController?.dispose();
     super.dispose();
   }
@@ -195,14 +210,24 @@ class _MascotWidgetState extends State<MascotWidget>
                 Positioned(
                   left: 0,
                   bottom: 0,
-                  child: SizedBox(
-                    width: 264,
-                    height: 528,
-                    child: GestureDetector(
-                      onSecondaryTap: () {
-                        _expressionService.expressRandom();
-                      },
-                      child: _buildCharacter(),
+                  child: AnimatedBuilder(
+                    animation: _jumpAnimation,
+                    builder: (context, child) {
+                      return Transform.translate(
+                        offset: Offset(0, _jumpAnimation.value),
+                        child: child,
+                      );
+                    },
+                    child: SizedBox(
+                      width: 264,
+                      height: 528,
+                      child: GestureDetector(
+                        onSecondaryTap: () {
+                          _jumpController.forward(from: 0);
+                          _expressionService.expressRandom();
+                        },
+                        child: _buildCharacter(),
+                      ),
                     ),
                   ),
                 ),
