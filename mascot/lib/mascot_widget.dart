@@ -48,6 +48,7 @@ class _MascotWidgetState extends State<MascotWidget>
   WanderController? get _wander => widget.wanderController;
   bool get _isWander => _wander != null;
   late final AnimationController _fadeController;
+  late final AnimationController _modelFadeController;
   late final AnimationController _jumpController;
   late final Animation<double> _jumpAnimation;
   late final AnimationController _dismissController;
@@ -68,17 +69,23 @@ class _MascotWidgetState extends State<MascotWidget>
       vsync: this,
       duration: const Duration(milliseconds: 1000),
     );
+    _modelFadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
     _jumpController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 350),
     );
     _jumpAnimation = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween<double>(begin: 0, end: -20), weight: 30),
       TweenSequenceItem(
-          tween: Tween<double>(begin: 0, end: -20), weight: 30),
-      TweenSequenceItem(
-          tween: Tween<double>(begin: -20, end: 0)
-              .chain(CurveTween(curve: Curves.bounceOut)),
-          weight: 70),
+        tween: Tween<double>(
+          begin: -20,
+          end: 0,
+        ).chain(CurveTween(curve: Curves.bounceOut)),
+        weight: 70,
+      ),
     ]).animate(_jumpController);
     _dismissController = AnimationController(
       vsync: this,
@@ -142,6 +149,7 @@ class _MascotWidgetState extends State<MascotWidget>
           _modelLoaded = true;
         });
         _syncParameters();
+        _modelFadeController.forward();
       }
     } catch (e) {
       debugPrint('Failed to load utsutsu2d model: $e');
@@ -210,7 +218,8 @@ class _MascotWidgetState extends State<MascotWidget>
 
     final bubbleChanged = _showBubble != _controller.isSpeaking;
 
-    final hasMessage = _controller.isSpeaking &&
+    final hasMessage =
+        _controller.isSpeaking &&
         (_controller.message.isNotEmpty ||
             _controller.message == ExpressionService.loadingMarker);
     if (hasMessage) {
@@ -279,6 +288,7 @@ class _MascotWidgetState extends State<MascotWidget>
     _expressionService.removeListener(_onBubblesChanged);
     _expressionService.dispose();
     _fadeController.dispose();
+    _modelFadeController.dispose();
     _jumpController.dispose();
     _dismissController.dispose();
     _puppetController?.dispose();
@@ -298,10 +308,7 @@ class _MascotWidgetState extends State<MascotWidget>
           return Transform.scale(
             scale: scale.clamp(0.0, 1.1),
             alignment: Alignment.bottomCenter,
-            child: Opacity(
-              opacity: (1.0 - t).clamp(0.0, 1.0),
-              child: child,
-            ),
+            child: Opacity(opacity: (1.0 - t).clamp(0.0, 1.0), child: child),
           );
         },
         child: ListenableBuilder(
@@ -311,9 +318,7 @@ class _MascotWidgetState extends State<MascotWidget>
             // Wander mode: fill the entire window height so the
             // character head sits near the top and the speech bubble
             // (overlaid at top:0) appears right above it.
-            final charH = _isWander
-                ? _wander!.windowHeight.toDouble()
-                : 528.0;
+            final charH = _isWander ? _wander!.windowHeight.toDouble() : 528.0;
 
             // Position bubble near the character head in wander mode.
             // The character renders in the lower portion of the window
@@ -322,123 +327,126 @@ class _MascotWidgetState extends State<MascotWidget>
                 ? (charH * 0.40).roundToDouble()
                 : 0.0;
 
-            return Stack(
-              children: [
-                Positioned(
-                  left: 0,
-                  bottom: 0,
-                  child: AnimatedBuilder(
-                    animation: _jumpAnimation,
-                    builder: (context, child) {
-                      return Transform.translate(
-                        offset: Offset(0, _jumpAnimation.value),
-                        child: child,
-                      );
-                    },
-                    child: SizedBox(
-                      width: charW,
-                      height: charH,
-                      child: GestureDetector(
-                        // Opaque hit testing so drags work on transparent areas
-                        behavior: _isWander
-                            ? HitTestBehavior.opaque
-                            : HitTestBehavior.deferToChild,
-                        onSecondaryTap: () {
-                          _jumpController.forward(from: 0);
-                          _expressionService.expressRandom();
-                        },
-                        onPanStart: _isWander
-                            ? (_) => _wander!.startDrag()
-                            : null,
-                        onPanUpdate: _isWander
-                            ? (details) => _wander!.updateDrag(details.delta)
-                            : null,
-                        onPanEnd: _isWander
-                            ? (details) => _wander!.endDrag()
-                            : null,
-                        child: _buildWanderWrapper(
-                          child: _buildCharacter(),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                if (_showBubble)
-                  _isWander
-                      ? Positioned(
-                          left: 4,
-                          top: wanderBubbleTop,
-                          right: 4,
-                          child: FadeTransition(
-                            key: _bubbleKey,
-                            opacity: _fadeController,
-                            child: _WanderBubble(text: _bubbleText),
-                          ),
-                        )
-                      : Positioned(
-                          left: 170,
-                          top: 40,
-                          right: 0,
-                          child: FadeTransition(
-                            key: _bubbleKey,
-                            opacity: _fadeController,
-                            child: _SpeechBubble(text: _bubbleText),
-                          ),
-                        ),
-                // Expression bubbles from right-click
-                for (var i = 0;
-                    i < _expressionService.activeBubbles.length;
-                    i++)
-                  _isWander
-                      ? Positioned(
-                          left: 4,
-                          top: wanderBubbleTop - (i + 1) * 30.0,
-                          right: 4,
-                          child: _WanderBubble(
-                            text: _expressionService.activeBubbles[i].text,
-                          ),
-                        )
-                      : Positioned(
-                          left: 170,
-                          top: 40.0 + i * 50.0,
-                          right: 0,
-                          child: _SpeechBubble(
-                            text: _expressionService.activeBubbles[i].text,
-                            showTail: i == 0,
-                          ),
-                        ),
-                if (io.Platform.isWindows && !_isWander)
+            return FadeTransition(
+              opacity: _modelFadeController,
+              child: Stack(
+                children: [
                   Positioned(
-                    top: _closeBtnTop,
-                    left: _closeBtnLeft,
-                    child: MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => windowManager.close(),
-                        child: Container(
-                          width: _closeBtnSize,
-                          height: _closeBtnSize,
-                          alignment: Alignment.center,
-                          color: Colors.transparent,
-                          child: Container(
-                            width: 24,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.5),
-                              shape: BoxShape.circle,
+                    left: 0,
+                    bottom: 0,
+                    child: AnimatedBuilder(
+                      animation: _jumpAnimation,
+                      builder: (context, child) {
+                        return Transform.translate(
+                          offset: Offset(0, _jumpAnimation.value),
+                          child: child,
+                        );
+                      },
+                      child: SizedBox(
+                        width: charW,
+                        height: charH,
+                        child: GestureDetector(
+                          // Opaque hit testing so drags work on transparent areas
+                          behavior: _isWander
+                              ? HitTestBehavior.opaque
+                              : HitTestBehavior.deferToChild,
+                          onSecondaryTap: () {
+                            _jumpController.forward(from: 0);
+                            _expressionService.expressRandom();
+                          },
+                          onPanStart: _isWander
+                              ? (_) => _wander!.startDrag()
+                              : null,
+                          onPanUpdate: _isWander
+                              ? (details) => _wander!.updateDrag(details.delta)
+                              : null,
+                          onPanEnd: _isWander
+                              ? (details) => _wander!.endDrag()
+                              : null,
+                          child: _buildWanderWrapper(child: _buildCharacter()),
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (_showBubble)
+                    _isWander
+                        ? Positioned(
+                            left: 4,
+                            top: wanderBubbleTop,
+                            right: 4,
+                            child: FadeTransition(
+                              key: _bubbleKey,
+                              opacity: _fadeController,
+                              child: _WanderBubble(text: _bubbleText),
                             ),
-                            child: const Icon(
-                              Icons.close,
-                              size: 14,
-                              color: Colors.white,
+                          )
+                        : Positioned(
+                            left: 170,
+                            top: 40,
+                            right: 0,
+                            child: FadeTransition(
+                              key: _bubbleKey,
+                              opacity: _fadeController,
+                              child: _SpeechBubble(text: _bubbleText),
+                            ),
+                          ),
+                  // Expression bubbles from right-click
+                  for (
+                    var i = 0;
+                    i < _expressionService.activeBubbles.length;
+                    i++
+                  )
+                    _isWander
+                        ? Positioned(
+                            left: 4,
+                            top: wanderBubbleTop - (i + 1) * 30.0,
+                            right: 4,
+                            child: _WanderBubble(
+                              text: _expressionService.activeBubbles[i].text,
+                            ),
+                          )
+                        : Positioned(
+                            left: 170,
+                            top: 40.0 + i * 50.0,
+                            right: 0,
+                            child: _SpeechBubble(
+                              text: _expressionService.activeBubbles[i].text,
+                              showTail: i == 0,
+                            ),
+                          ),
+                  if (io.Platform.isWindows && !_isWander)
+                    Positioned(
+                      top: _closeBtnTop,
+                      left: _closeBtnLeft,
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => windowManager.close(),
+                          child: Container(
+                            width: _closeBtnSize,
+                            height: _closeBtnSize,
+                            alignment: Alignment.center,
+                            color: Colors.transparent,
+                            child: Container(
+                              width: 24,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.5),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.close,
+                                size: 14,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             );
           },
         ),
@@ -469,10 +477,7 @@ class _MascotWidgetState extends State<MascotWidget>
 
     // Layer 3: Horizontal flip when facing right (model default faces left)
     if (!wander.facingLeft) {
-      result = Transform.flip(
-        flipX: true,
-        child: result,
-      );
+      result = Transform.flip(flipX: true, child: result);
     }
 
     return result;
@@ -521,8 +526,10 @@ class _MascotWidgetState extends State<MascotWidget>
         ImageFiltered(
           imageFilter: ui.ImageFilter.dilate(radiusX: 6, radiusY: 6),
           child: ColorFiltered(
-            colorFilter:
-                const ColorFilter.mode(Colors.black, ui.BlendMode.srcATop),
+            colorFilter: const ColorFilter.mode(
+              Colors.black,
+              ui.BlendMode.srcATop,
+            ),
             child: child,
           ),
         ),
@@ -530,8 +537,10 @@ class _MascotWidgetState extends State<MascotWidget>
         ImageFiltered(
           imageFilter: ui.ImageFilter.dilate(radiusX: 4, radiusY: 4),
           child: ColorFiltered(
-            colorFilter:
-                const ColorFilter.mode(Colors.white, ui.BlendMode.srcATop),
+            colorFilter: const ColorFilter.mode(
+              Colors.white,
+              ui.BlendMode.srcATop,
+            ),
             child: child,
           ),
         ),
@@ -633,9 +642,7 @@ class _SquigglyLoaderState extends State<_SquigglyLoader>
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
-        return CustomPaint(
-          painter: _SquigglyPainter(_controller.value),
-        );
+        return CustomPaint(painter: _SquigglyPainter(_controller.value));
       },
     );
   }
@@ -662,7 +669,8 @@ class _SquigglyPainter extends CustomPainter {
 
     path.moveTo(0, midY);
     for (double x = 0; x <= size.width; x += 1) {
-      final y = midY +
+      final y =
+          midY +
           amplitude * math.sin((x / wavelength) * 2 * math.pi + phaseOffset);
       path.lineTo(x, y);
     }
@@ -721,11 +729,7 @@ class _WanderBubble extends StatelessWidget {
             ],
           ),
           child: _isLoading
-              ? const SizedBox(
-                  width: 40,
-                  height: 10,
-                  child: _SquigglyLoader(),
-                )
+              ? const SizedBox(width: 40, height: 10, child: _SquigglyLoader())
               : Text(
                   text,
                   style: const TextStyle(
@@ -738,10 +742,7 @@ class _WanderBubble extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
         ),
-        CustomPaint(
-          size: const Size(10, 6),
-          painter: _DownTailPainter(),
-        ),
+        CustomPaint(size: const Size(10, 6), painter: _DownTailPainter()),
       ],
     );
   }
