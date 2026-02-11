@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:utsutsu2d/utsutsu2d.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'expression_service.dart';
 import 'mascot_controller.dart';
 
 class MascotWidget extends StatefulWidget {
@@ -30,6 +31,7 @@ class _MascotWidgetState extends State<MascotWidget>
 
   MascotController get _controller => widget.controller;
   late final AnimationController _fadeController;
+  late final ExpressionService _expressionService;
   bool _showBubble = false;
   String _bubbleText = '';
 
@@ -44,8 +46,9 @@ class _MascotWidgetState extends State<MascotWidget>
     super.initState();
     _fadeController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 1000),
     );
+    _expressionService = ExpressionService(_controller);
     _controller.addListener(_onControllerChanged);
     _loadModel();
     // Push initial opaque regions after first frame renders
@@ -170,6 +173,7 @@ class _MascotWidgetState extends State<MascotWidget>
   @override
   void dispose() {
     _controller.removeListener(_onControllerChanged);
+    _expressionService.dispose();
     _fadeController.dispose();
     _puppetController?.dispose();
     super.dispose();
@@ -190,7 +194,12 @@ class _MascotWidgetState extends State<MascotWidget>
                   child: SizedBox(
                     width: 264,
                     height: 528,
-                    child: _buildCharacter(),
+                    child: GestureDetector(
+                      onSecondaryTap: () {
+                        _expressionService.expressRandom();
+                      },
+                      child: _buildCharacter(),
+                    ),
                   ),
                 ),
                 if (_showBubble)

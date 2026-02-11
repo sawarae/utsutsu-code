@@ -13,6 +13,7 @@ class MascotController extends ChangeNotifier {
 
   bool _isSpeaking = false;
   bool _isListening = false;
+  bool _directExpression = false;
   String _message = '';
   String? _currentEmotion;
 
@@ -78,6 +79,9 @@ class MascotController extends ChangeNotifier {
   }
 
   void _checkSignalFile() {
+    // Skip signal file polling while a direct expression is active
+    if (_directExpression) return;
+
     final file = File(_signalPath);
     final speaking = file.existsSync();
     if (speaking && !_isSpeaking) {
@@ -184,6 +188,27 @@ class MascotController extends ChangeNotifier {
     _animTimer = null;
     _parameters[_modelConfig.mouthParam] =
         _modelConfig.getMouthClosedValue(_currentEmotion);
+    notifyListeners();
+  }
+
+  /// Directly trigger an expression (bypasses signal file).
+  /// Used by the right-click context menu.
+  void showExpression(String emotion, String message) {
+    _directExpression = true;
+    _isSpeaking = true;
+    _message = message;
+    _setEmotion(emotion);
+    _startMouthAnimation();
+    notifyListeners();
+  }
+
+  /// Reset to idle state (stop expression triggered by [showExpression]).
+  void hideExpression() {
+    _directExpression = false;
+    _isSpeaking = false;
+    _stopMouthAnimation();
+    _message = '';
+    _setEmotion(null);
     notifyListeners();
   }
 
