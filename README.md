@@ -12,7 +12,7 @@ Claude CodeのSKILLベースで実行しています。
 - [COEIROINKv2](https://coeiroink.com/download)
 - macOS または Windows
 - Python3
-- Flutter SDK (3.10+) (mac)
+- Flutter SDK (3.10+) — macOS のみ。Windows はビルド済み exe を使用
 
 ### セットアップ
 
@@ -22,41 +22,27 @@ Claude Codeで `/tsukuyomi-setup` を実行すると、前提条件チェック�
 /tsukuyomi-setup
 ```
 
-マスコットのみ起動する場合は
+#### Windows — 手動で行う場合:
 
-```
-/mascot-run
-```
-です。
+1. [Python3](https://apps.microsoft.com/detail/9pnrbtzxmb4z) をインストール（Microsoft Store）
+2. [COEIROINKv2](https://coeiroink.com/download) をインストールして起動
+3. [Releases](https://github.com/sawarae/utsutsu-code/releases) から `utsutsu-code-windows.zip` をダウンロード
+4. 任意の場所に展開
+5. `mascot.exe` を起動
 
-#### 手動で行う場合:
+その後、`.claude` ディレクトリの内容を開発用のプロジェクト内にコピーしてください。
+
+#### macOS — 手動で行う場合:
 
 ```bash
 cd mascot
 flutter pub get
 make setup          # モデル + フォールバック画像のダウンロード (gh CLI が必要)
-flutter run -d macos    # macOS
+flutter run -d macos
 ```
 
-`make` や `gh` CLI がない環境では、以下から手動でダウンロードしてください:
+`gh` CLI がない環境では `curl` フォールバックが使えます（`make setup` が自動判定）。
 
-#### windows
-1. **モデルファイル**: [utsutsu2d v0.01](https://github.com/sawarae/utsutsu2d/releases/tag/v0.01) から `tsukuyomi_blend_shape.inp` をダウンロード → `mascot/assets/models/blend_shape/` に配置
-
-#### ビルド済み exe を使う場合:
-
-```bash
-
-# exe と同階層の data/models/ にモデルを配置
-# build/windows/x64/runner/Release/
-#   ├── mascot.exe
-#   └── data/models/blend_shape/
-#       ├── tsukuyomi_blend_shape.inp
-#       └── emotions.toml
-```
-
-
-その後、.claudeディレクトリの内容を開発用のプロジェクト内にコピーしてください。
 
 ## つくよみちゃんについて
 

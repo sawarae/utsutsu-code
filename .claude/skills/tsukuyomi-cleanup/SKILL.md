@@ -10,6 +10,17 @@ user_invocable: true
 
 マスコットアプリ、TTS関連のプロセス・シグナルファイル・ビルド成果物・グローバルフックを掃除する。
 
+## プラットフォーム判定
+
+最初にプラットフォームを判定し、以降のコマンドを分岐する:
+```bash
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) echo "WINDOWS" ;;
+  Darwin*)              echo "MACOS" ;;
+  *)                    echo "LINUX" ;;
+esac
+```
+
 ## 引数
 
 - 省略時: ユーザーに何を掃除するか聞く
@@ -23,7 +34,9 @@ user_invocable: true
 
 ### Step 1: マスコットプロセスの停止
 
-実行中のマスコットアプリを確認し、停止するか聞く:
+実行中のマスコットアプリを確認し、停止するか聞く。
+
+**macOS / Linux:**
 ```bash
 pgrep -f "utsutsu_code" && echo "RUNNING" || echo "NOT_RUNNING"
 ```
@@ -33,9 +46,32 @@ pgrep -f "utsutsu_code" && echo "RUNNING" || echo "NOT_RUNNING"
 pkill -f "utsutsu_code"
 ```
 
+**Windows:**
+```bash
+tasklist //FI "IMAGENAME eq mascot.exe" 2>/dev/null | grep -q mascot.exe && echo "RUNNING" || echo "NOT_RUNNING"
+```
+
+停止する場合:
+```bash
+taskkill //F //IM mascot.exe 2>/dev/null || true
+```
+
 `flutter run` が動いている場合も確認:
+
+**macOS / Linux:**
 ```bash
 pgrep -f "flutter run" && echo "FLUTTER_RUN_ACTIVE" || echo "NOT_RUNNING"
+```
+
+**Windows:**
+```bash
+tasklist //FI "IMAGENAME eq dart.exe" 2>/dev/null | grep -q dart.exe && echo "FLUTTER_RUN_ACTIVE" || echo "NOT_RUNNING"
+```
+
+停止する場合:
+```bash
+# Windows
+taskkill //F //IM dart.exe 2>/dev/null || true
 ```
 
 ### Step 2: シグナルファイルの削除
@@ -54,9 +90,16 @@ rm -f ~/.claude/utsutsu-code/mascot_listening
 
 ### Step 3: ビルド成果物の削除
 
-ユーザーに確認してから削除する:
+ユーザーに確認してから削除する。
+
+**macOS / Linux:**
 ```bash
 du -sh mascot/build 2>/dev/null || echo "NO_BUILD"
+```
+
+**Windows:**
+```bash
+powershell -c "if (Test-Path mascot\\build) { '{0:N2} MB' -f ((Get-ChildItem -Recurse mascot\\build | Measure-Object -Property Length -Sum).Sum / 1MB) } else { 'NO_BUILD' }"
 ```
 
 削除する場合:
@@ -66,7 +109,7 @@ rm -rf mascot/build
 
 ### Step 4: ダウンロード済みアセットの削除
 
-ユーザーに確認してから削除する（再ダウンロードに `make setup` が必要になる）:
+ユーザーに確認してから削除する（再ダウンロードに `make setup`（macOS）またはスキルの手動コマンド（Windows）が必要になる）:
 ```bash
 ls mascot/assets/models/blend_shape/model.inp 2>/dev/null && echo "HAS_MODEL"
 ls mascot/assets/fallback/mouth_open.png 2>/dev/null && echo "HAS_FALLBACK"
@@ -79,9 +122,9 @@ rm -f mascot/assets/models/parts/model.inp
 rm -f mascot/assets/fallback/*.png
 ```
 
-### Step 5: グローバルシンボリックリンクの削除
+### Step 5: グローバルフック/コピーの削除
 
-`~/.claude/` のシンボリックリンクを削除する:
+`~/.claude/` のフックとスキルを削除する:
 ```bash
 # フック
 ls -la ~/.claude/hooks/mascot_tts.py 2>/dev/null
@@ -97,11 +140,11 @@ ls -la ~/.claude/skills/ 2>/dev/null
 rm -f ~/.claude/hooks/mascot_tts.py
 rm -f ~/.claude/hooks/tts_config.toml
 
-# スキル（シンボリックリンクのみ削除、プロジェクト内の正のソースは残る）
-rm -f ~/.claude/skills/tsukuyomi-setup
-rm -f ~/.claude/skills/tsukuyomi-cleanup
-rm -f ~/.claude/skills/tts
-rm -f ~/.claude/skills/tts-debug
+# スキル（シンボリックリンクまたはコピーを削除、プロジェクト内の正のソースは残る）
+rm -rf ~/.claude/skills/tsukuyomi-setup
+rm -rf ~/.claude/skills/tsukuyomi-cleanup
+rm -rf ~/.claude/skills/tts
+rm -rf ~/.claude/skills/tts-debug
 ```
 
 **注意:** フック削除でStop hookのTTS通知が動かなくなる。スキル削除で他プロジェクトからの `/tsukuyomi-setup` 等が使えなくなる。再セットアップには `/tsukuyomi-setup` を使う。
@@ -131,9 +174,9 @@ grep -q "mascot_tts.py" ~/.claude/CLAUDE.md 2>/dev/null && echo "HAS_TTS_CONFIG"
 
 **重要:** `~/.claude/CLAUDE.md` はユーザーのプライベート設定なので、勝手に書き換えず案内のみ行う。再セットアップ時は `/tsukuyomi-setup` の Step 9 で再追記を案内する。
 
-## Makefile ターゲット
+## Makefile ターゲット（macOS / Linux のみ）
 
-`mascot/Makefile` にクリーンアップターゲットがある。スキル実行時はこれらを使う:
+`mascot/Makefile` にクリーンアップターゲットがある。macOS/Linux ではスキル実行時にこれらを使える:
 
 | ターゲット | 内容 |
 |-----------|------|
@@ -142,6 +185,8 @@ grep -q "mascot_tts.py" ~/.claude/CLAUDE.md 2>/dev/null && echo "HAS_TTS_CONFIG"
 | `make clean-signal` | シグナルファイルのみ削除 |
 | `make clean-assets` | モデル・画像を削除（要 `make setup` で再取得） |
 | `make clean-hooks` | グローバルフックのリンク削除（要 `/tsukuyomi-setup` で再作成） |
+
+**Windows:** `make` が使えないため、各ステップのコマンドを直接実行する。
 
 ## 確認ルール
 
