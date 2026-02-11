@@ -51,7 +51,6 @@ class _MascotWidgetState extends State<MascotWidget>
   late final AnimationController _jumpController;
   late final Animation<double> _jumpAnimation;
   late final AnimationController _dismissController;
-  late final AnimationController _kyuuklaController;
   late final ExpressionService _expressionService;
   bool _showBubble = false;
   String _bubbleText = '';
@@ -84,10 +83,6 @@ class _MascotWidgetState extends State<MascotWidget>
     _dismissController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
-    );
-    _kyuuklaController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
     );
     _expressionService = ExpressionService(_controller);
     _expressionService.addListener(_onBubblesChanged);
@@ -195,16 +190,6 @@ class _MascotWidgetState extends State<MascotWidget>
   }
 
   void _onControllerChanged() {
-    // Handle kyuuklarin signal: play spin animation
-    if (_controller.isKyuuklarin && !_kyuuklaController.isAnimating) {
-      _controller.showExpression('Singing', 'きゅうくらりん♪');
-      _kyuuklaController.forward(from: 0).then((_) {
-        if (mounted) {
-          _controller.hideExpression();
-        }
-      });
-    }
-
     // Handle dismiss signal: play "pop" animation then close/notify
     if (_controller.isDismissed && !_dismissController.isAnimating) {
       _dismissController.forward().then((_) {
@@ -296,7 +281,6 @@ class _MascotWidgetState extends State<MascotWidget>
     _fadeController.dispose();
     _jumpController.dispose();
     _dismissController.dispose();
-    _kyuuklaController.dispose();
     _puppetController?.dispose();
     super.dispose();
   }
@@ -372,31 +356,8 @@ class _MascotWidgetState extends State<MascotWidget>
                         onPanEnd: _isWander
                             ? (details) => _wander!.endDrag()
                             : null,
-                        child: AnimatedBuilder(
-                          animation: _kyuuklaController,
-                          builder: (context, child) {
-                            if (!_kyuuklaController.isAnimating) {
-                              return child!;
-                            }
-                            final t = _kyuuklaController.value;
-                            // Spin 2 full rotations with ease-out
-                            final angle = t * 4 * math.pi *
-                                Curves.easeOut.transform(1 - (1 - t).abs());
-                            // Scale: grow slightly then return
-                            final scale = 1.0 + 0.2 * math.sin(t * math.pi);
-                            return Transform(
-                              alignment: Alignment.bottomCenter,
-                              transform: Matrix4.identity()
-                                ..translate(charW / 2, charH * 0.7)
-                                ..rotateZ(angle)
-                                ..scale(scale)
-                                ..translate(-charW / 2, -charH * 0.7),
-                              child: child,
-                            );
-                          },
-                          child: _buildWanderWrapper(
-                            child: _buildCharacter(),
-                          ),
+                        child: _buildWanderWrapper(
+                          child: _buildCharacter(),
                         ),
                       ),
                     ),
