@@ -135,7 +135,7 @@ bool Win32Window::Create(const std::wstring& title,
   double scale_factor = dpi / 96.0;
 
   HWND window = CreateWindowEx(
-      0,  // Extended styles set later; DWM handles transparency
+      WS_EX_LAYERED,  // Layered window for per-pixel alpha and click-through
       window_class, title.c_str(),
       WS_POPUP,  // Borderless window (no caption, no thick frame)
       Scale(origin.x, scale_factor), Scale(origin.y, scale_factor),

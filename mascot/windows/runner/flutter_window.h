@@ -34,8 +34,7 @@ class FlutterWindow : public Win32Window {
     double x, y, w, h;
   };
 
-  // Check opaque regions and toggle WS_EX_TRANSPARENT.
-  // Also initiates native drag on new left-button press over opaque pixels.
+  // Toggle WS_EX_TRANSPARENT based on cursor position over opaque regions.
   void UpdateClickThrough();
 
   // Returns true if (logical_x, logical_y) falls inside any opaque region.
@@ -55,12 +54,6 @@ class FlutterWindow : public Win32Window {
 
   // True after Dart has sent the first set of opaque regions.
   bool regions_initialized_ = false;
-
-  // True while a native window drag is in progress.
-  bool is_dragging_ = false;
-
-  // Previous left-button state for edge detection.
-  bool mouse_was_down_ = false;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

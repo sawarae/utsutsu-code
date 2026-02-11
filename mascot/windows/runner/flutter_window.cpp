@@ -1,10 +1,24 @@
 #include "flutter_window.h"
 
 #include <dwmapi.h>
+#include <windowsx.h>
 
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
+
+// Subclass proc for the Flutter child window.
+// Returns HTTRANSPARENT for all WM_NCHITTEST so hit testing falls through
+// to the parent window, which decides HTCAPTION (drag) vs pass-through.
+static WNDPROC g_original_child_proc = nullptr;
+
+static LRESULT CALLBACK ChildHitTestProc(
+    HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+  if (msg == WM_NCHITTEST) {
+    return HTTRANSPARENT;
+  }
+  return CallWindowProc(g_original_child_proc, hwnd, msg, wp, lp);
+}
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -27,7 +41,15 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
-  SetChildContent(flutter_controller_->view()->GetNativeWindow());
+
+  HWND flutter_view = flutter_controller_->view()->GetNativeWindow();
+  SetChildContent(flutter_view);
+
+  // Subclass the Flutter child window so WM_NCHITTEST returns HTTRANSPARENT.
+  // This makes hit testing fall through to the parent window.
+  g_original_child_proc = reinterpret_cast<WNDPROC>(
+      SetWindowLongPtr(flutter_view, GWLP_WNDPROC,
+                       reinterpret_cast<LONG_PTR>(ChildHitTestProc)));
 
   // -- Transparent window setup --
   HWND hwnd = GetHandle();
@@ -35,6 +57,11 @@ bool FlutterWindow::OnCreate() {
   // Extend DWM frame into the entire client area for per-pixel transparency.
   MARGINS margins = {-1, -1, -1, -1};
   DwmExtendFrameIntoClientArea(hwnd, &margins);
+
+  // Make the layered window fully opaque at the layer level.
+  // DWM per-pixel alpha still works:
+  // effective_alpha = layer_alpha(255/255) * surface_alpha = surface_alpha
+  SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
 
   // Set up MethodChannel for Dart to push opaque regions.
   // Dart sends a list of {x, y, w, h} maps in logical coordinates.
@@ -73,7 +100,9 @@ bool FlutterWindow::OnCreate() {
         }
       });
 
-  // Start click-through polling timer (50ms, matching macOS interval)
+  // Timer to toggle WS_EX_TRANSPARENT on the parent window.
+  // When transparent, clicks pass through to other applications.
+  // When opaque, WM_NCHITTEST returns HTCAPTION for drag support.
   SetTimer(hwnd, kClickThroughTimerId, 50, nullptr);
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -105,6 +134,36 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  // Handle WM_NCHITTEST BEFORE Flutter to decide drag vs click-through.
+  // Opaque region -> HTCAPTION (drag-to-move).
+  // Transparent region -> HTTRANSPARENT (click passes to window below).
+  if (message == WM_NCHITTEST) {
+    POINT pt = {GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
+    RECT rect;
+    GetWindowRect(hwnd, &rect);
+
+    if (!PtInRect(&rect, pt)) {
+      return HTNOWHERE;
+    }
+
+    // Convert physical screen coords to Flutter logical coords
+    int local_x = pt.x - rect.left;
+    int local_y = pt.y - rect.top;
+    double dpi = static_cast<double>(GetDpiForWindow(hwnd));
+    double scale = dpi / 96.0;
+    double logical_x = local_x / scale;
+    double logical_y = local_y / scale;
+
+    if (IsPointInOpaqueRegion(logical_x, logical_y)) {
+      return HTCAPTION;
+    }
+    return HTTRANSPARENT;
+  }
+
+  if (message == WM_ERASEBKGND) {
+    return 1;
+  }
+
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =
@@ -116,10 +175,6 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
 
   switch (message) {
-    case WM_ERASEBKGND:
-      // Suppress default background erase to prevent black flash in the
-      // DWM glass region. Flutter paints the entire client area.
-      return 1;
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
       break;
@@ -135,9 +190,6 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
 }
 
 void FlutterWindow::UpdateClickThrough() {
-  // Skip updates while a native drag is in progress
-  if (is_dragging_) return;
-
   HWND hwnd = GetHandle();
   if (!hwnd) return;
 
@@ -147,9 +199,10 @@ void FlutterWindow::UpdateClickThrough() {
   RECT rect;
   GetWindowRect(hwnd, &rect);
 
-  // Only process when cursor is within window bounds
+  LONG exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+
+  // When cursor is outside the window, keep current state
   if (!PtInRect(&rect, cursor)) {
-    mouse_was_down_ = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
     return;
   }
 
@@ -161,34 +214,23 @@ void FlutterWindow::UpdateClickThrough() {
   double logical_x = local_x / scale;
   double logical_y = local_y / scale;
 
-  bool transparent = !IsPointInOpaqueRegion(logical_x, logical_y);
-  bool mouse_is_down = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
-
-  LONG exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
-
-  if (transparent) {
-    // Transparent region - enable click-through
-    if (!(exStyle & WS_EX_TRANSPARENT)) {
-      SetWindowLong(hwnd, GWL_EXSTYLE, exStyle | WS_EX_TRANSPARENT);
-    }
-  } else {
-    // Opaque region - disable click-through
+  if (IsPointInOpaqueRegion(logical_x, logical_y)) {
+    // Opaque region: remove WS_EX_TRANSPARENT so window receives input.
+    // WM_NCHITTEST will return HTCAPTION for drag support.
     if (exStyle & WS_EX_TRANSPARENT) {
       SetWindowLong(hwnd, GWL_EXSTYLE, exStyle & ~WS_EX_TRANSPARENT);
+      SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+          SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
     }
-
-    // Start native drag on new left-button press over opaque region
-    bool mouse_just_pressed = mouse_is_down && !mouse_was_down_;
-    if (mouse_just_pressed) {
-      is_dragging_ = true;
-      ReleaseCapture();
-      // Enter the modal window-move loop. Returns when user releases button.
-      SendMessage(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
-      is_dragging_ = false;
+  } else {
+    // Transparent region: set WS_EX_TRANSPARENT so clicks pass through
+    // to other applications.
+    if (!(exStyle & WS_EX_TRANSPARENT)) {
+      SetWindowLong(hwnd, GWL_EXSTYLE, exStyle | WS_EX_TRANSPARENT);
+      SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+          SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
     }
   }
-
-  mouse_was_down_ = mouse_is_down;
 }
 
 bool FlutterWindow::IsPointInOpaqueRegion(double lx, double ly) const {
