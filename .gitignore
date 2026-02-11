@@ -55,6 +55,7 @@ mascot/assets/fallback/
 
 # Claude
 .claude/hooks/tts_config.toml
+.claude/settings.json
 .claude/settings.local.json
 
 # CocoaPods

@@ -118,26 +118,26 @@ def notify_fallback(message):
             timeout=3,
         )
     elif sys.platform == "win32":
-        # Escape single quotes for PowerShell string interpolation
-        safe = message.replace("'", "''")
-        # Non-blocking balloon tip notification
+        # Use -EncodedCommand to avoid all quoting/escaping issues
+        script = (
+            "Add-Type -AssemblyName System.Windows.Forms; "
+            "$n = New-Object System.Windows.Forms.NotifyIcon; "
+            "$n.Icon = [System.Drawing.SystemIcons]::Information; "
+            "$n.Visible = $true; "
+            "$n.ShowBalloonTip(3000, 'Mascot TTS', "
+            f"$env:MASCOT_MSG, "
+            "[System.Windows.Forms.ToolTipIcon]::Info); "
+            "Start-Sleep -Milliseconds 3000; "
+            "$n.Dispose()"
+        )
+        import base64
+        encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+        env = {**os.environ, "MASCOT_MSG": message}
         subprocess.run(
-            [
-                "powershell",
-                "-c",
-                (
-                    "Add-Type -AssemblyName System.Windows.Forms; "
-                    "$n = New-Object System.Windows.Forms.NotifyIcon; "
-                    "$n.Icon = [System.Drawing.SystemIcons]::Information; "
-                    "$n.Visible = $true; "
-                    f"$n.ShowBalloonTip(3000, 'Mascot TTS', '{safe}', "
-                    "[System.Windows.Forms.ToolTipIcon]::Info); "
-                    "Start-Sleep -Milliseconds 3000; "
-                    "$n.Dispose()"
-                ),
-            ],
+            ["powershell", "-EncodedCommand", encoded],
             check=False,
             timeout=5,
+            env=env,
         )
     else:
         # Linux: notify-send
@@ -153,18 +153,19 @@ def _play_wav(wav_path):
     if sys.platform == "darwin":
         subprocess.run(["afplay", wav_path], timeout=5, check=False)
     elif sys.platform == "win32":
-        safe_path = wav_path.replace("'", "''")
+        # Use -EncodedCommand + env var to avoid path injection
+        import base64
+        script = (
+            "(New-Object System.Media.SoundPlayer($env:MASCOT_WAV))"
+            ".PlaySync()"
+        )
+        encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+        env = {**os.environ, "MASCOT_WAV": wav_path}
         subprocess.run(
-            [
-                "powershell",
-                "-c",
-                (
-                    f"(New-Object System.Media.SoundPlayer('{safe_path}'))"
-                    ".PlaySync()"
-                ),
-            ],
-            timeout=5,
+            ["powershell", "-EncodedCommand", encoded],
             check=False,
+            timeout=5,
+            env=env,
         )
     else:
         # Linux
