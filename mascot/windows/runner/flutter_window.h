@@ -29,6 +29,13 @@ class FlutterWindow : public Win32Window {
  private:
   static const UINT_PTR kClickThroughTimerId = 1;
 
+  // Close button region in Flutter logical coordinates.
+  // Must match Positioned(top: 0, left: 228) + size 36x36 in mascot_widget.dart.
+  static constexpr double kCloseBtnLeft = 228.0;
+  static constexpr double kCloseBtnTop = 0.0;
+  static constexpr double kCloseBtnRight = 264.0;
+  static constexpr double kCloseBtnBottom = 36.0;
+
   // Logical rectangle (in Flutter's coordinate system).
   struct LogicalRect {
     double x, y, w, h;

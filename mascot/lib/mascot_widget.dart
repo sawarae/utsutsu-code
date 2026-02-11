@@ -22,6 +22,12 @@ class _MascotWidgetState extends State<MascotWidget>
     with SingleTickerProviderStateMixin {
   static const _clickThroughChannel = MethodChannel('mascot/click_through');
 
+  // Close button position/size in logical coordinates.
+  // Must match kCloseBtn* constants in flutter_window.h.
+  static const _closeBtnLeft = 228.0;
+  static const _closeBtnTop = 0.0;
+  static const _closeBtnSize = 36.0;
+
   MascotController get _controller => widget.controller;
   late final AnimationController _fadeController;
   bool _showBubble = false;
@@ -200,16 +206,16 @@ class _MascotWidgetState extends State<MascotWidget>
                   ),
                 if (io.Platform.isWindows)
                   Positioned(
-                    top: 0,
-                    left: 228,
+                    top: _closeBtnTop,
+                    left: _closeBtnLeft,
                     child: MouseRegion(
                       cursor: SystemMouseCursors.click,
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: () => windowManager.close(),
                         child: Container(
-                          width: 36,
-                          height: 36,
+                          width: _closeBtnSize,
+                          height: _closeBtnSize,
                           alignment: Alignment.center,
                           color: Colors.transparent,
                           child: Container(

@@ -145,7 +145,8 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     double scale = dpi / 96.0;
     double lx = px / scale;
     double ly = py / scale;
-    if (lx >= 228 && lx < 264 && ly >= 0 && ly < 36) {
+    if (lx >= kCloseBtnLeft && lx < kCloseBtnRight &&
+        ly >= kCloseBtnTop && ly < kCloseBtnBottom) {
       PostMessage(hwnd, WM_CLOSE, 0, 0);
       return 0;
     }
@@ -172,12 +173,6 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     double logical_y = local_y / scale;
 
     if (IsPointInOpaqueRegion(logical_x, logical_y)) {
-      // Close button: left=228, top=0, size=36x36 (logical coords)
-      // Return HTCLIENT so Flutter receives the click event.
-      if (logical_x >= 228 && logical_x < 264 &&
-          logical_y >= 0 && logical_y < 36) {
-        return HTCLIENT;
-      }
       return HTCAPTION;
     }
     return HTTRANSPARENT;
