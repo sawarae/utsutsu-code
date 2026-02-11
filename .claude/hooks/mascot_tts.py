@@ -123,9 +123,17 @@ class _TtsLock:
         self._locked = False
 
     def __enter__(self):
-        os.makedirs(SIGNAL_DIR, exist_ok=True)
+        try:
+            os.makedirs(SIGNAL_DIR, exist_ok=True)
+        except OSError:
+            pass
         try:
             self._fd = open(LOCK_FILE, "w")
+            # msvcrt.locking needs at least 1 byte to lock
+            if sys.platform == "win32":
+                self._fd.write(" ")
+                self._fd.flush()
+                self._fd.seek(0)
         except OSError as e:
             logging.warning("Cannot open lock file: %s", e)
             return self
@@ -480,7 +488,10 @@ def main():
             i += 1
     argv = filtered
 
-    # Override global signal paths if --signal-dir specified
+    # Override global signal paths if --signal-dir specified.
+    # LOCK_FILE is intentionally NOT overridden: all processes share a
+    # single audio output device, so TTS playback must serialize globally
+    # regardless of which signal directory each child uses.
     if signal_dir:
         global SIGNAL_DIR, SIGNAL_FILE, MUTE_FILE
         SIGNAL_DIR = signal_dir

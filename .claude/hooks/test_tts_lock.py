@@ -5,23 +5,37 @@ Verifies that _TtsLock serializes access across multiple processes,
 preventing signal file races and overlapping audio playback.
 """
 
-import json
 import multiprocessing
 import os
 import sys
 import tempfile
 import time
+import unittest
 
 # Insert hooks dir into path so we can import mascot_tts
 sys.path.insert(0, os.path.dirname(__file__))
 
 import mascot_tts
 
+# Save original globals for restoration
+_ORIG_SIGNAL_DIR = mascot_tts.SIGNAL_DIR
+_ORIG_SIGNAL_FILE = mascot_tts.SIGNAL_FILE
+_ORIG_LOCK_FILE = mascot_tts.LOCK_FILE
+_ORIG_MUTE_FILE = mascot_tts.MUTE_FILE
+
+
+def _restore_globals():
+    """Restore mascot_tts module globals to original values."""
+    mascot_tts.SIGNAL_DIR = _ORIG_SIGNAL_DIR
+    mascot_tts.SIGNAL_FILE = _ORIG_SIGNAL_FILE
+    mascot_tts.LOCK_FILE = _ORIG_LOCK_FILE
+    mascot_tts.MUTE_FILE = _ORIG_MUTE_FILE
+
 
 def _run_tts_with_lock(args):
     """Worker function: acquire lock, write marker, sleep, clear."""
     lock_file, signal_file, worker_id, hold_time = args
-    # Override globals for test isolation
+    # Override globals for test isolation (each worker is a separate process)
     mascot_tts.SIGNAL_DIR = os.path.dirname(signal_file)
     mascot_tts.SIGNAL_FILE = signal_file
     mascot_tts.LOCK_FILE = lock_file
@@ -83,6 +97,7 @@ def test_sequential_lock():
               f"waits={wait_times}, all content intact")
 
 
+@unittest.skipIf(sys.platform == "win32", "fcntl not available on Windows")
 def test_lock_timeout():
     """Lock should timeout gracefully and proceed."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -90,26 +105,29 @@ def test_lock_timeout():
         mascot_tts.SIGNAL_DIR = tmpdir
         mascot_tts.LOCK_FILE = lock_file
 
-        # Hold the lock manually
-        import fcntl
-        fd = open(lock_file, "w")
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            # Hold the lock manually
+            import fcntl
+            fd = open(lock_file, "w")
+            fcntl.flock(fd, fcntl.LOCK_EX)
 
-        # Try to acquire with very short timeout — should not hang
-        start = time.monotonic()
-        lock = mascot_tts._TtsLock(timeout=1)
-        with lock:
-            elapsed = time.monotonic() - start
-            # Should have waited ~1s then proceeded
-            assert elapsed >= 0.8, f"Timeout too fast: {elapsed}s"
-            assert elapsed < 3.0, f"Timeout too slow: {elapsed}s"
-            assert not lock._locked, "Should not have acquired lock"
+            # Try to acquire with very short timeout — should not hang
+            start = time.monotonic()
+            lock = mascot_tts._TtsLock(timeout=1)
+            with lock:
+                elapsed = time.monotonic() - start
+                # Should have waited ~1s then proceeded
+                assert elapsed >= 0.8, f"Timeout too fast: {elapsed}s"
+                assert elapsed < 3.0, f"Timeout too slow: {elapsed}s"
+                assert not lock._locked, "Should not have acquired lock"
 
-        # Release
-        fcntl.flock(fd, fcntl.LOCK_UN)
-        fd.close()
+            # Release
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            fd.close()
 
-        print(f"  Lock timeout: elapsed={elapsed:.2f}s, graceful fallback")
+            print(f"  Lock timeout: elapsed={elapsed:.2f}s, graceful fallback")
+        finally:
+            _restore_globals()
 
 
 def test_lock_cleanup():
@@ -119,15 +137,38 @@ def test_lock_cleanup():
         mascot_tts.SIGNAL_DIR = tmpdir
         mascot_tts.LOCK_FILE = lock_file
 
-        lock = mascot_tts._TtsLock(timeout=5)
-        with lock:
-            assert lock._fd is not None
-            assert lock._locked
-        # After context exit, fd should be closed
-        assert lock._fd is None
-        assert not lock._locked
+        try:
+            lock = mascot_tts._TtsLock(timeout=5)
+            with lock:
+                assert lock._fd is not None
+                assert lock._locked
+            # After context exit, fd should be closed
+            assert lock._fd is None
+            assert not lock._locked
 
-        print("  Lock cleanup: fd properly closed")
+            print("  Lock cleanup: fd properly closed")
+        finally:
+            _restore_globals()
+
+
+def test_lock_open_failure():
+    """Lock should proceed gracefully when lock file cannot be created."""
+    orig_lock = mascot_tts.LOCK_FILE
+    try:
+        # Point to a non-existent deeply nested path with no parent
+        mascot_tts.LOCK_FILE = "/nonexistent/deeply/nested/tts.lock"
+        mascot_tts.SIGNAL_DIR = "/nonexistent/deeply/nested"
+
+        lock = mascot_tts._TtsLock(timeout=1)
+        with lock:
+            # Should enter context without error, but not locked
+            assert not lock._locked, "Should not have acquired lock"
+            assert lock._fd is None, "FD should be None on open failure"
+
+        print("  Lock open failure: graceful fallback")
+    finally:
+        mascot_tts.LOCK_FILE = orig_lock
+        _restore_globals()
 
 
 def test_signal_not_clobbered():
@@ -163,5 +204,6 @@ if __name__ == "__main__":
     test_sequential_lock()
     test_lock_timeout()
     test_lock_cleanup()
+    test_lock_open_failure()
     test_signal_not_clobbered()
     print("\nAll tests passed!")
