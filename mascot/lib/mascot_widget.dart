@@ -95,6 +95,9 @@ class _MascotWidgetState extends State<MascotWidget>
     _expressionService.addListener(_onBubblesChanged);
     _controller.addListener(_onControllerChanged);
     _wander?.addListener(_onWanderChanged);
+    _wander?.onCollision = () {
+      _expressionService.expressCollision();
+    };
     _loadModel();
     // In wander mode, disable native window dragging so Flutter handles it
     if (_isWander && io.Platform.isMacOS) {

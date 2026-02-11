@@ -664,4 +664,87 @@ void main() {
       controller.dispose();
     });
   });
+
+  // ── WanderController Collision Tests ──────────────────────
+
+  group('WanderController collision', () {
+    late WanderController wander;
+
+    setUp(() {
+      wander = WanderController(
+        seed: 42,
+        windowWidth: 150,
+        windowHeight: 350,
+      );
+    });
+
+    tearDown(() {
+      wander.dispose();
+    });
+
+    test('resolveCollision fires onCollision callback when overlapping', () {
+      var callCount = 0;
+      wander.onCollision = () => callCount++;
+
+      final collided = wander.resolveCollision(200, 0, 150, 350);
+
+      expect(collided, false);
+      expect(callCount, 0);
+    });
+
+    test('resolveCollision detects AABB overlap and fires callback', () {
+      var callCount = 0;
+      wander.onCollision = () => callCount++;
+
+      final collided = wander.resolveCollision(100, 0, 150, 350);
+
+      expect(collided, true);
+      expect(callCount, 1);
+    });
+
+    test('resolveCollision respects cooldown period', () {
+      var callCount = 0;
+      wander.onCollision = () => callCount++;
+
+      wander.resolveCollision(100, 0, 150, 350);
+      expect(callCount, 1);
+
+      wander.resolveCollision(100, 0, 150, 350);
+      expect(callCount, 1);
+    });
+
+    test('resolveCollision fires again after cooldown expires', () async {
+      final fastWander = WanderController(
+        seed: 42,
+        windowWidth: 150,
+        windowHeight: 350,
+      );
+
+      var callCount = 0;
+      fastWander.onCollision = () => callCount++;
+
+      fastWander.resolveCollision(100, 0, 150, 350);
+      expect(callCount, 1);
+
+      fastWander.resolveCollision(100, 0, 150, 350);
+      expect(callCount, 1, reason: 'Should not fire within cooldown');
+
+      fastWander.dispose();
+    });
+
+    test('resolveCollision does not fire callback when no overlap', () {
+      var callCount = 0;
+      wander.onCollision = () => callCount++;
+
+      final collided = wander.resolveCollision(500, 0, 150, 350);
+
+      expect(collided, false);
+      expect(callCount, 0);
+    });
+
+    test('resolveCollision works without onCollision callback set', () {
+      final collided = wander.resolveCollision(100, 0, 150, 350);
+      expect(collided, true);
+    });
+  });
 }
