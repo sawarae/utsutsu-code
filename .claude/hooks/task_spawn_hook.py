@@ -82,13 +82,17 @@ def main():
 
     new_prompt = prompt + inject
 
+    # Preserve all original tool input (subagent_type, description, model, etc.)
+    # and only override prompt. Returning only {prompt} would drop subagent_type,
+    # causing "Agent type 'undefined'" errors.
+    tool_input = data.get("tool_input", {})
+    tool_input["prompt"] = new_prompt
+
     output = {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "allow",
-            "updatedInput": {
-                "prompt": new_prompt,
-            },
+            "updatedInput": tool_input,
         }
     }
     json.dump(output, sys.stdout, ensure_ascii=False)
