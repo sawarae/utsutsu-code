@@ -357,6 +357,7 @@ grep -q "mascot_tts.py" ~/.claude/CLAUDE.md 2>/dev/null && echo "OK" || echo "NO
 
 ## 関連スキル
 
+- `/mascot-run` — マスコットアプリ起動（セットアップ後の再起動に）
 - `/tsukuyomi-cleanup` — クリーンアップ
 - `/tts-debug` — TTS問題の診断
 - `/tts` — TTS手動実行
