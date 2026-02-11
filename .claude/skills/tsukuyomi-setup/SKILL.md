@@ -25,7 +25,7 @@ esac
 
 - COEIROINK v2 (ポート50032)
 - Python 3.x
-- Flutter SDK (マスコットアプリ用)
+- Flutter SDK (macOS/Linux のマスコットアプリビルド用。Windows は不要)
 
 ## 実行手順
 
@@ -39,7 +39,10 @@ python3 --version 2>/dev/null && echo "OK" || echo "NOT_FOUND"
 ```
 見つからない場合 → ユーザーに「Python 3 がインストールされていないようです。インストールしていますか？」と聞く。
 
-**Flutter チェック:**
+**Flutter チェック（macOS / Linux のみ）:**
+
+Windows ではリリース済み exe を使うため Flutter は不要。スキップする。
+
 ```bash
 which flutter 2>/dev/null && echo "OK" || echo "NOT_FOUND"
 ```
@@ -69,7 +72,8 @@ ls /Applications/COEIROINKv2.app > /dev/null 2>&1 \
 
 **判定ルール:**
 - Python 3 が無い場合: TTSもマスコットも動かないため、インストールを案内して中断
-- Flutter が無い場合: マスコットアプリのビルド(Step 7)をスキップ可能。TTS部分のみセットアップを続行するか聞く
+- Flutter が無い場合（macOS/Linux）: マスコットアプリのビルド(Step 7)をスキップ可能。TTS部分のみセットアップを続行するか聞く
+- Flutter が無い場合（Windows）: 問題なし。リリース済み exe を使用する
 - COEIROINK v2 が未起動の場合: 起動を促す
 
 すべての前提条件が揃っていることを確認してから Step 1 に進む。
@@ -244,26 +248,49 @@ cd mascot && flutter run -d macos
 
 **Windows:**
 
-リリース済みの exe を使用する。Flutter ビルド環境は不要。
+リリース済み exe を GitHub Releases から自動ダウンロード・展開する。Flutter 不要。
 
-1. GitHub Releases からダウンロードを案内する:
 ```bash
-# 最新リリースのダウンロードURLを取得
-curl -sL "https://api.github.com/repos/sawarae/utsutsu-code/releases/latest" | \
-  python3 -c "
-import json, sys
-release = json.load(sys.stdin)
+# 最新リリースのWindows zipをダウンロード・展開
+python3 -c "
+import json, os, urllib.request, zipfile, tempfile
+home = os.environ.get('USERPROFILE', os.environ.get('HOME', ''))
+install_dir = os.path.join(home, '.claude', 'utsutsu-code', 'mascot')
+os.makedirs(install_dir, exist_ok=True)
+
+release = json.loads(urllib.request.urlopen(
+    'https://api.github.com/repos/sawarae/utsutsu-code/releases/latest'
+).read())
 print(f'Latest release: {release[\"tag_name\"]}')
+
+zip_url = None
 for asset in release['assets']:
     if asset['name'].endswith('.zip') and 'windows' in asset['name']:
-        print(f'Download: {asset[\"browser_download_url\"]}')
-        print(f'  Size: {asset[\"size\"] // 1024 // 1024} MB')
+        zip_url = asset['browser_download_url']
+        break
+
+if not zip_url:
+    print('ERROR: Windows zip not found in release')
+    exit(1)
+
+print(f'Downloading {zip_url} ...')
+tmp = tempfile.mktemp(suffix='.zip')
+urllib.request.urlretrieve(zip_url, tmp)
+
+print(f'Extracting to {install_dir} ...')
+with zipfile.ZipFile(tmp, 'r') as z:
+    z.extractall(install_dir)
+os.remove(tmp)
+print(f'Done. mascot.exe: {os.path.join(install_dir, \"mascot.exe\")}')
 "
 ```
 
-2. ユーザーにダウンロード・展開・起動を案内する:
-   - zip をダウンロードして任意の場所に展開
-   - `mascot.exe` を起動
+展開先: `~/.claude/utsutsu-code/mascot/mascot.exe`
+
+起動:
+```bash
+"$USERPROFILE/.claude/utsutsu-code/mascot/mascot.exe" &
+```
 
 アプリが起動したら、別ターミナルでTTSテスト:
 ```bash
