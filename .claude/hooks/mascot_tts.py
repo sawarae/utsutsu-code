@@ -22,6 +22,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -36,6 +37,8 @@ MAX_MESSAGE_LENGTH = 30
 SIGNAL_DIR = os.path.expanduser("~/.claude/utsutsu-code")
 SIGNAL_FILE = os.path.join(SIGNAL_DIR, "mascot_speaking")
 MUTE_FILE = os.path.join(SIGNAL_DIR, "tts_muted")
+LOCK_FILE = os.path.join(SIGNAL_DIR, "tts.lock")
+LOCK_TIMEOUT = 10  # seconds to wait for lock before proceeding anyway
 
 # Default ports
 COEIROINK_PORT = 50032
@@ -101,6 +104,64 @@ def clear_signal():
         os.unlink(SIGNAL_FILE)
     except OSError:
         pass
+
+
+class _TtsLock:
+    """Cross-process file lock for serializing TTS playback.
+
+    Prevents concurrent mascot_tts.py processes (e.g. from parallel
+    subagents in /develop worktrees) from stomping on each other's
+    signal files and overlapping audio playback.
+
+    Uses fcntl.flock on Unix, msvcrt.locking on Windows.
+    Falls back gracefully (proceeds without lock) on timeout.
+    """
+
+    def __init__(self, timeout=LOCK_TIMEOUT):
+        self.timeout = timeout
+        self._fd = None
+        self._locked = False
+
+    def __enter__(self):
+        os.makedirs(SIGNAL_DIR, exist_ok=True)
+        try:
+            self._fd = open(LOCK_FILE, "w")
+        except OSError as e:
+            logging.warning("Cannot open lock file: %s", e)
+            return self
+
+        deadline = time.monotonic() + self.timeout
+        while True:
+            try:
+                if sys.platform == "win32":
+                    import msvcrt
+                    msvcrt.locking(self._fd.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(self._fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                self._locked = True
+                return self
+            except (OSError, IOError):
+                if time.monotonic() >= deadline:
+                    logging.warning("TTS lock timeout after %ds, proceeding", self.timeout)
+                    return self
+                time.sleep(0.2)
+
+    def __exit__(self, *args):
+        if self._fd:
+            if self._locked:
+                try:
+                    if sys.platform == "win32":
+                        import msvcrt
+                        msvcrt.locking(self._fd.fileno(), msvcrt.LK_UNLCK, 1)
+                    else:
+                        import fcntl
+                        fcntl.flock(self._fd, fcntl.LOCK_UN)
+                except (OSError, IOError):
+                    pass
+            self._fd.close()
+            self._fd = None
+            self._locked = False
 
 
 def notify_fallback(message):
@@ -464,51 +525,53 @@ def main():
     result = {"status": "unknown"}
     muted = is_muted()
 
-    try:
-        if muted:
-            logging.info("TTS muted, signal-only")
-            adapter = NoneAdapter()
-        else:
-            adapter = resolve_adapter(config)
-        engine_name = type(adapter).__name__.replace("Adapter", "").lower()
-
-        if isinstance(adapter, NoneAdapter):
-            adapter.synthesize_and_play(message, emotion)
-            if not muted:
-                notify_fallback(message)
-            result = {
-                "status": "muted" if muted else "fallback",
-                "engine": "none",
-                "message": message,
-            }
-        else:
-            success = adapter.synthesize_and_play(message, emotion)
-            if success:
-                result = {
-                    "status": "tts",
-                    "engine": engine_name,
-                    "message": message,
-                }
-                if emotion:
-                    result["emotion"] = emotion
-                logging.info("TTS playback complete via %s", engine_name)
+    # Serialize TTS across concurrent processes (parallel subagents)
+    with _TtsLock():
+        try:
+            if muted:
+                logging.info("TTS muted, signal-only")
+                adapter = NoneAdapter()
             else:
-                notify_fallback(message)
+                adapter = resolve_adapter(config)
+            engine_name = type(adapter).__name__.replace("Adapter", "").lower()
+
+            if isinstance(adapter, NoneAdapter):
+                adapter.synthesize_and_play(message, emotion)
+                if not muted:
+                    notify_fallback(message)
                 result = {
-                    "status": "fallback",
-                    "reason": "speaker_not_found",
-                    "engine": engine_name,
+                    "status": "muted" if muted else "fallback",
+                    "engine": "none",
                     "message": message,
                 }
-                logging.warning("Speaker not found in %s", engine_name)
-    except Exception as e:
-        logging.error("TTS failed: %s", e)
-        if not muted:
-            try:
-                notify_fallback(message)
-            except Exception:
-                pass
-        result = {"status": "error", "error": str(e), "message": message}
+            else:
+                success = adapter.synthesize_and_play(message, emotion)
+                if success:
+                    result = {
+                        "status": "tts",
+                        "engine": engine_name,
+                        "message": message,
+                    }
+                    if emotion:
+                        result["emotion"] = emotion
+                    logging.info("TTS playback complete via %s", engine_name)
+                else:
+                    notify_fallback(message)
+                    result = {
+                        "status": "fallback",
+                        "reason": "speaker_not_found",
+                        "engine": engine_name,
+                        "message": message,
+                    }
+                    logging.warning("Speaker not found in %s", engine_name)
+        except Exception as e:
+            logging.error("TTS failed: %s", e)
+            if not muted:
+                try:
+                    notify_fallback(message)
+                except Exception:
+                    pass
+            result = {"status": "error", "error": str(e), "message": message}
 
     print(json.dumps(result))
 
