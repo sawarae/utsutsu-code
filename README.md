@@ -37,11 +37,9 @@ Claude Codeで `/tsukuyomi-setup` を実行すると、前提条件チェック�
 ```bash
 cd mascot
 flutter pub get
-make setup          # モデル + フォールバック画像のダウンロード (gh CLI が必要)
+make setup
 flutter run -d macos
 ```
-
-`gh` CLI がない環境では `curl` フォールバックが使えます（`make setup` が自動判定）。
 
 
 ## つくよみちゃんについて
