@@ -197,6 +197,11 @@ class _MascotAppState extends State<MascotApp> {
     final signalDir = widget.config.signalDir ?? _defaultSignalDir();
     _spawnSignalPath = '$signalDir/spawn_child';
 
+    // Clean up zombie wander children from a previous (crashed) parent
+    if (!widget.config.wander) {
+      _cleanStaleChildren();
+    }
+
     // Poll for child spawn signals (only in non-wander mode)
     if (!widget.config.wander) {
       _spawnTimer = Timer.periodic(
@@ -210,6 +215,52 @@ class _MascotAppState extends State<MascotApp> {
     final home =
         Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
     return '$home/.claude/utsutsu-code';
+  }
+
+  /// Kill zombie wander children left behind by a previous parent that
+  /// crashed before its [dispose] could run.
+  void _cleanStaleChildren() {
+    final signalDir = widget.config.signalDir ?? _defaultSignalDir();
+    final childrenFile = File('$signalDir/wander_children.json');
+    if (!childrenFile.existsSync()) return;
+
+    try {
+      final data =
+          jsonDecode(childrenFile.readAsStringSync()) as List<dynamic>;
+      for (final entry in data) {
+        final pid = entry['pid'] as int?;
+        final dir = entry['signalDir'] as String?;
+        if (pid != null) {
+          try {
+            Process.killPid(pid);
+          } catch (_) {}
+        }
+        if (dir != null) {
+          try {
+            File('$dir/mascot_dismiss').writeAsStringSync('');
+          } catch (_) {}
+        }
+      }
+      childrenFile.deleteSync();
+    } catch (e) {
+      debugPrint('Failed to clean stale children: $e');
+      try {
+        childrenFile.deleteSync();
+      } catch (_) {}
+    }
+  }
+
+  /// Persist current wander child PIDs to disk so they can be cleaned up
+  /// if the parent crashes.
+  void _persistChildPids() {
+    final signalDir = widget.config.signalDir ?? _defaultSignalDir();
+    final childrenFile = File('$signalDir/wander_children.json');
+    try {
+      final data = _wanderChildren
+          .map((c) => {'pid': c.pid, 'signalDir': c.signalDir})
+          .toList();
+      childrenFile.writeAsStringSync(jsonEncode(data));
+    } catch (_) {}
   }
 
   void _checkSpawnSignal() {
@@ -280,6 +331,7 @@ class _MascotAppState extends State<MascotApp> {
     }
     Process.start(exe, args, mode: ProcessStartMode.detached).then((process) {
       _wanderChildren.add(_WanderChild(pid: process.pid, signalDir: signalDir));
+      _persistChildPids();
       debugPrint('Spawned wander mascot: pid=${process.pid} (${_wanderChildren.length}/$_maxChildren)');
     }).catchError((e) {
       debugPrint('Failed to spawn wander mascot: $e');
@@ -311,6 +363,14 @@ class _MascotAppState extends State<MascotApp> {
         Process.killPid(child.pid);
       } catch (_) {}
     }
+    _wanderChildren.clear();
+    _persistChildPids(); // Write empty list (or overwrite stale data)
+    // Clean up the file entirely since no children remain
+    try {
+      final signalDir = widget.config.signalDir ?? _defaultSignalDir();
+      final childrenFile = File('$signalDir/wander_children.json');
+      if (childrenFile.existsSync()) childrenFile.deleteSync();
+    } catch (_) {}
     for (final child in _children) {
       child.controller.dispose();
     }
