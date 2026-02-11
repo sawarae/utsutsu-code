@@ -51,6 +51,15 @@ class ExpressionService extends ChangeNotifier {
     'Singing': 'ノリノリ',
   };
 
+  /// Short exclamations used when mascots collide.
+  static const _collisionPhrases = [
+    'うわぁ！',
+    'わっ！',
+    'ぶつかっちゃった！',
+    'きゃっ！',
+    'いたっ！',
+  ];
+
   /// Hardcoded fallback phrases used when emotions.toml is not found.
   static const _fallbackPhrases = {
     'Gentle': ['元気ですか？', '何かお手伝いしましょうか', 'よろしくお願いします'],
@@ -144,6 +153,37 @@ class ExpressionService extends ChangeNotifier {
     if (emotions.isEmpty) return;
     final emotion = emotions[_random.nextInt(emotions.length)];
     await express(emotion);
+  }
+
+  /// Trigger a collision expression: show a short exclamation bubble
+  /// with Trouble face and optional TTS.
+  Future<void> expressCollision() async {
+    if (activeBubbles.length >= maxBubbles) return;
+
+    final id = _nextBubbleId++;
+    final phrase =
+        _collisionPhrases[_random.nextInt(_collisionPhrases.length)];
+    final entry = BubbleEntry(id, phrase);
+    activeBubbles.add(entry);
+    notifyListeners();
+
+    _controller.showExpression('Trouble', '');
+
+    try {
+      final available = await _tts.isAvailable();
+      if (available) {
+        await _tts.synthesizeAndPlay(phrase);
+        await Future<void>.delayed(const Duration(seconds: 2));
+      } else {
+        await Future<void>.delayed(const Duration(seconds: 3));
+      }
+    } finally {
+      activeBubbles.removeWhere((b) => b.id == id);
+      notifyListeners();
+      if (activeBubbles.isEmpty) {
+        _controller.hideExpression();
+      }
+    }
   }
 
   /// Trigger an expression with a concurrent bubble.

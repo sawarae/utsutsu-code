@@ -63,6 +63,11 @@ class WanderController extends ChangeNotifier {
   // --- Collision ---
   int _tickCount = 0;
   static const _collisionCheckInterval = 6; // every ~200ms at 30fps
+  DateTime? _lastCollisionTime;
+  static const _collisionCooldown = Duration(seconds: 5);
+
+  /// Called when a collision occurs (after cooldown).
+  VoidCallback? onCollision;
 
   // --- Public getters ---
   bool get facingLeft => _facingLeft;
@@ -449,6 +454,15 @@ class WanderController extends ChangeNotifier {
       _x = _x.clamp(0.0, _screenWidth - windowWidth);
       _updateWindowPosition();
       notifyListeners();
+
+      // Fire collision callback with cooldown
+      final now = DateTime.now();
+      if (_lastCollisionTime == null ||
+          now.difference(_lastCollisionTime!) > _collisionCooldown) {
+        _lastCollisionTime = now;
+        onCollision?.call();
+      }
+
       return true;
     }
     return false;
