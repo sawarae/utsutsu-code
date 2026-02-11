@@ -10,11 +10,22 @@ import 'package:window_manager/window_manager.dart';
 
 import 'expression_service.dart';
 import 'mascot_controller.dart';
+import 'wander_controller.dart';
 
 class MascotWidget extends StatefulWidget {
   final MascotController controller;
+  final WanderController? wanderController;
 
-  const MascotWidget({super.key, required this.controller});
+  /// Called when the dismiss animation completes.
+  /// If null, the window is closed (main mascot behavior).
+  final VoidCallback? onDismissComplete;
+
+  const MascotWidget({
+    super.key,
+    required this.controller,
+    this.wanderController,
+    this.onDismissComplete,
+  });
 
   @override
   State<MascotWidget> createState() => _MascotWidgetState();
@@ -31,6 +42,8 @@ class _MascotWidgetState extends State<MascotWidget>
   static const _closeBtnSize = 36.0;
 
   MascotController get _controller => widget.controller;
+  WanderController? get _wander => widget.wanderController;
+  bool get _isWander => _wander != null;
   late final AnimationController _fadeController;
   late final AnimationController _jumpController;
   late final Animation<double> _jumpAnimation;
@@ -71,6 +84,7 @@ class _MascotWidgetState extends State<MascotWidget>
     _expressionService = ExpressionService(_controller);
     _expressionService.addListener(_onBubblesChanged);
     _controller.addListener(_onControllerChanged);
+    _wander?.addListener(_onWanderChanged);
     _loadModel();
     // Push initial opaque regions after first frame renders
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -139,9 +153,10 @@ class _MascotWidgetState extends State<MascotWidget>
   void _pushOpaqueRegions() {
     if (!io.Platform.isWindows) return;
 
+    final charW = _isWander ? _wander!.windowWidth : 264.0;
+    final charH = _isWander ? _wander!.windowHeight : 528.0;
     final regions = <Map<String, double>>[
-      // Character: 264x528 at bottom-left (full window height)
-      {'x': 0.0, 'y': 0.0, 'w': 264.0, 'h': 528.0},
+      {'x': 0.0, 'y': 0.0, 'w': charW, 'h': charH},
     ];
 
     if (_showBubble) {
@@ -163,10 +178,14 @@ class _MascotWidgetState extends State<MascotWidget>
   }
 
   void _onControllerChanged() {
-    // Handle dismiss signal: play "pop" animation then close
+    // Handle dismiss signal: play "pop" animation then close/notify
     if (_controller.isDismissed && !_dismissController.isAnimating) {
       _dismissController.forward().then((_) {
-        windowManager.close();
+        if (widget.onDismissComplete != null) {
+          widget.onDismissComplete!();
+        } else {
+          windowManager.close();
+        }
       });
       return;
     }
@@ -208,6 +227,13 @@ class _MascotWidgetState extends State<MascotWidget>
     }
   }
 
+  void _onWanderChanged() {
+    if (!mounted) return;
+    // Sync wander parameter overrides (sparkles, arm) to MascotController
+    _controller.setWanderOverrides(_wander!.parameterOverrides);
+    setState(() {});
+  }
+
   void _onBubblesChanged() {
     if (mounted) {
       setState(() {});
@@ -219,6 +245,7 @@ class _MascotWidgetState extends State<MascotWidget>
 
   @override
   void dispose() {
+    _wander?.removeListener(_onWanderChanged);
     _controller.removeListener(_onControllerChanged);
     _expressionService.removeListener(_onBubblesChanged);
     _expressionService.dispose();
@@ -251,6 +278,8 @@ class _MascotWidgetState extends State<MascotWidget>
         child: ListenableBuilder(
           listenable: _controller,
           builder: (context, _) {
+            final charW = _isWander ? _wander!.windowWidth : 264.0;
+            final charH = _isWander ? _wander!.windowHeight : 528.0;
             return Stack(
               children: [
                 Positioned(
@@ -264,15 +293,17 @@ class _MascotWidgetState extends State<MascotWidget>
                         child: child,
                       );
                     },
-                    child: SizedBox(
-                      width: 264,
-                      height: 528,
-                      child: GestureDetector(
-                        onSecondaryTap: () {
-                          _jumpController.forward(from: 0);
-                          _expressionService.expressRandom();
-                        },
-                        child: _buildCharacter(),
+                    child: _buildWanderWrapper(
+                      child: SizedBox(
+                        width: charW,
+                        height: charH,
+                        child: GestureDetector(
+                          onSecondaryTap: () {
+                            _jumpController.forward(from: 0);
+                            _expressionService.expressRandom();
+                          },
+                          child: _buildCharacter(),
+                        ),
                       ),
                     ),
                   ),
@@ -338,6 +369,38 @@ class _MascotWidgetState extends State<MascotWidget>
         ),
       ),
     );
+  }
+
+  /// Wraps the character with wander-mode transforms: horizontal flip,
+  /// bounce offset, and squishy deformation.
+  Widget _buildWanderWrapper({required Widget child}) {
+    if (!_isWander) return child;
+    final wander = _wander!;
+    final (sx, sy) = wander.squishScale;
+
+    // Layer 1: Squish (mochi deformation) anchored at bottom-center
+    Widget result = Transform.scale(
+      scaleX: sx,
+      scaleY: sy,
+      alignment: Alignment.bottomCenter,
+      child: child,
+    );
+
+    // Layer 2: Bounce offset (negative = up)
+    result = Transform.translate(
+      offset: Offset(0, wander.bounceOffset),
+      child: result,
+    );
+
+    // Layer 3: Horizontal flip when facing left
+    if (wander.facingLeft) {
+      result = Transform.flip(
+        flipX: true,
+        child: result,
+      );
+    }
+
+    return result;
   }
 
   Widget _buildCharacter() {

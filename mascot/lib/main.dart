@@ -1,4 +1,6 @@
-import 'dart:io' show Platform;
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io' show Directory, File, Platform;
 
 import 'package:flutter/material.dart';
 import 'package:screen_retriever/screen_retriever.dart';
@@ -6,6 +8,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'mascot_controller.dart';
 import 'mascot_widget.dart';
+import 'wander_controller.dart';
 
 void main(List<String> args) async {
   final config = _parseArgs(args);
@@ -13,7 +16,11 @@ void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
 
-  final windowSize = Size(config.width ?? 424, config.height ?? 528);
+  // Wander mode uses a smaller window (half size)
+  final defaultWidth = config.wander ? 132.0 : 424.0;
+  final defaultHeight = config.wander ? 264.0 : 528.0;
+  final windowSize =
+      Size(config.width ?? defaultWidth, config.height ?? defaultHeight);
   final windowOptions = WindowOptions(
     size: windowSize,
     // On macOS, window_manager handles transparency via NSWindow.
@@ -30,12 +37,15 @@ void main(List<String> args) async {
   windowManager.waitUntilReadyToShow(windowOptions, () async {
     await windowManager.setBackgroundColor(Colors.transparent);
 
-    // Position at bottom of screen (default: left edge)
-    final primaryDisplay = await screenRetriever.getPrimaryDisplay();
-    final screenSize = primaryDisplay.size;
-    final x = config.offsetX ?? 0.0;
-    final y = screenSize.height - windowSize.height;
-    await windowManager.setPosition(Offset(x, y));
+    if (!config.wander) {
+      // Position at bottom of screen (default: left edge)
+      final primaryDisplay = await screenRetriever.getPrimaryDisplay();
+      final screenSize = primaryDisplay.size;
+      final x = config.offsetX ?? 0.0;
+      final y = screenSize.height - windowSize.height;
+      await windowManager.setPosition(Offset(x, y));
+    }
+    // Wander mode: WanderController handles positioning
 
     await windowManager.show();
   });
@@ -51,6 +61,7 @@ class _AppConfig {
   final double? offsetX;
   final double? width;
   final double? height;
+  final bool wander;
 
   const _AppConfig({
     this.modelsDir,
@@ -59,6 +70,7 @@ class _AppConfig {
     this.offsetX,
     this.width,
     this.height,
+    this.wander = false,
   });
 }
 
@@ -70,6 +82,7 @@ _AppConfig _parseArgs(List<String> args) {
   double? offsetX;
   double? width;
   double? height;
+  bool wander = false;
 
   for (var i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -85,6 +98,8 @@ _AppConfig _parseArgs(List<String> args) {
         if (i + 1 < args.length) width = double.tryParse(args[++i]);
       case '--height':
         if (i + 1 < args.length) height = double.tryParse(args[++i]);
+      case '--wander':
+        wander = true;
     }
   }
 
@@ -95,7 +110,16 @@ _AppConfig _parseArgs(List<String> args) {
     offsetX: offsetX,
     width: width,
     height: height,
+    wander: wander,
   );
+}
+
+/// A child mascot spawned via signal file.
+class _ChildMascot {
+  final String signalDir;
+  final MascotController controller;
+
+  _ChildMascot({required this.signalDir, required this.controller});
 }
 
 class MascotApp extends StatefulWidget {
@@ -108,7 +132,15 @@ class MascotApp extends StatefulWidget {
 }
 
 class _MascotAppState extends State<MascotApp> {
+  static const _mainWidth = 424.0;
+  static const _childWidth = 264.0;
+  static const _windowHeight = 528.0;
+
   late final MascotController _controller;
+  WanderController? _wanderController;
+  final List<_ChildMascot> _children = [];
+  Timer? _spawnTimer;
+  late final String _spawnSignalPath;
 
   @override
   void initState() {
@@ -118,23 +150,141 @@ class _MascotAppState extends State<MascotApp> {
       modelsDir: widget.config.modelsDir,
       model: widget.config.model,
     );
+
+    if (widget.config.wander) {
+      final windowW = widget.config.width ?? 132.0;
+      final windowH = widget.config.height ?? 264.0;
+      _wanderController = WanderController(
+        windowWidth: windowW,
+        windowHeight: windowH,
+      );
+      _wanderController!.start();
+    }
+
+    // Resolve spawn signal path from the main signal directory
+    final signalDir = widget.config.signalDir ?? _defaultSignalDir();
+    _spawnSignalPath = '$signalDir/spawn_child';
+
+    // Poll for child spawn signals (only in non-wander mode)
+    if (!widget.config.wander) {
+      _spawnTimer = Timer.periodic(
+        const Duration(milliseconds: 200),
+        (_) => _checkSpawnSignal(),
+      );
+    }
+  }
+
+  static String _defaultSignalDir() {
+    final home =
+        Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
+    return '$home/.claude/utsutsu-code';
+  }
+
+  void _checkSpawnSignal() {
+    final file = File(_spawnSignalPath);
+    if (!file.existsSync()) return;
+
+    try {
+      final content = file.readAsStringSync().trim();
+      file.deleteSync();
+
+      final json = jsonDecode(content) as Map<String, dynamic>;
+      final signalDir = json['signal_dir'] as String;
+      final model = json['model'] as String? ?? 'blend_shape_mini';
+
+      // Clean any stale dismiss file
+      final dismissFile = File('$signalDir/mascot_dismiss');
+      if (dismissFile.existsSync()) dismissFile.deleteSync();
+
+      // Ensure signal dir exists
+      Directory(signalDir).createSync(recursive: true);
+
+      final controller = MascotController(
+        signalDir: signalDir,
+        modelsDir: widget.config.modelsDir,
+        model: model,
+      );
+
+      setState(() {
+        _children.add(_ChildMascot(
+          signalDir: signalDir,
+          controller: controller,
+        ));
+      });
+      _updateWindowSize();
+    } catch (e) {
+      debugPrint('Failed to spawn child mascot: $e');
+    }
+  }
+
+  void _removeChild(int index) {
+    if (index < 0 || index >= _children.length) return;
+    final child = _children[index];
+    child.controller.dispose();
+    setState(() {
+      _children.removeAt(index);
+    });
+    _updateWindowSize();
+  }
+
+  Future<void> _updateWindowSize() async {
+    final width = _mainWidth + _childWidth * _children.length;
+    await windowManager.setSize(Size(width, _windowHeight));
   }
 
   @override
   void dispose() {
+    _spawnTimer?.cancel();
+    for (final child in _children) {
+      child.controller.dispose();
+    }
+    _wanderController?.dispose();
     _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (widget.config.wander) {
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          scaffoldBackgroundColor: Colors.transparent,
+          canvasColor: Colors.transparent,
+        ),
+        home: MascotWidget(
+          controller: _controller,
+          wanderController: _wanderController,
+        ),
+      );
+    }
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         scaffoldBackgroundColor: Colors.transparent,
         canvasColor: Colors.transparent,
       ),
-      home: MascotWidget(controller: _controller),
+      home: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          SizedBox(
+            width: _mainWidth,
+            height: _windowHeight,
+            child: MascotWidget(controller: _controller),
+          ),
+          for (var i = 0; i < _children.length; i++)
+            SizedBox(
+              width: _childWidth,
+              height: _windowHeight,
+              child: MascotWidget(
+                key: ValueKey(_children[i].signalDir),
+                controller: _children[i].controller,
+                onDismissComplete: () => _removeChild(i),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

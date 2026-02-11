@@ -393,6 +393,8 @@ def main():
     emotion = None
     signal_dir = None
     dismiss = False
+    spawn = False
+    spawn_model = None
     argv = sys.argv[1:]
     filtered = []
     i = 0
@@ -406,6 +408,12 @@ def main():
         elif argv[i] == "--dismiss":
             dismiss = True
             i += 1
+        elif argv[i] == "--spawn":
+            spawn = True
+            i += 1
+        elif argv[i] == "--spawn-model" and i + 1 < len(argv):
+            spawn_model = argv[i + 1]
+            i += 2
         else:
             filtered.append(argv[i])
             i += 1
@@ -424,6 +432,22 @@ def main():
         os.makedirs(SIGNAL_DIR, exist_ok=True)
         Path(dismiss_path).write_text("dismiss", encoding="utf-8")
         print(json.dumps({"status": "dismissed", "signal_dir": SIGNAL_DIR}))
+        return
+
+    # Spawn: write spawn_child signal to parent mascot and exit
+    if spawn:
+        if not signal_dir:
+            print(json.dumps({"status": "error", "error": "--signal-dir required with --spawn"}))
+            return
+        spawn_signal = os.path.join(SIGNAL_DIR, "spawn_child")
+        os.makedirs(SIGNAL_DIR, exist_ok=True)
+        payload = {"signal_dir": signal_dir}
+        if spawn_model:
+            payload["model"] = spawn_model
+        Path(spawn_signal).write_text(json.dumps(payload), encoding="utf-8")
+        # Ensure the child signal dir exists
+        os.makedirs(signal_dir, exist_ok=True)
+        print(json.dumps({"status": "spawned", "signal_dir": signal_dir}))
         return
 
     # Custom message from argv, stdin JSON, or default
