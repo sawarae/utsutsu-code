@@ -12,6 +12,32 @@
 #define PW_RENDERFULLCONTENT 0x00000002
 #endif
 
+// --- Undocumented SetWindowCompositionAttribute API for transparency ---
+typedef enum {
+  ACCENT_DISABLED = 0,
+  ACCENT_ENABLE_GRADIENT = 1,
+  ACCENT_ENABLE_TRANSPARENTGRADIENT = 2,
+  ACCENT_ENABLE_BLURBEHIND = 3,
+  ACCENT_ENABLE_ACRYLICBLURBEHIND = 4,
+} ACCENT_STATE;
+
+struct ACCENT_POLICY {
+  ACCENT_STATE AccentState;
+  DWORD AccentFlags;
+  DWORD GradientColor;  // AABBGGRR
+  DWORD AnimationId;
+};
+
+// WCA_ACCENT_POLICY = 19
+struct WINDOWCOMPOSITIONATTRIBDATA {
+  DWORD Attrib;
+  PVOID pvData;
+  SIZE_T cbData;
+};
+
+typedef BOOL(WINAPI* pfnSetWindowCompositionAttribute)(
+    HWND, WINDOWCOMPOSITIONATTRIBDATA*);
+
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
 
@@ -38,18 +64,16 @@ bool FlutterWindow::OnCreate() {
   // -- Transparent window setup --
   HWND hwnd = GetHandle();
 
-  // Ensure WS_EX_LAYERED is set for per-pixel transparency
-  LONG exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
-  SetWindowLong(hwnd, GWL_EXSTYLE, exStyle | WS_EX_LAYERED);
-
-  // Extend DWM frame into the entire client area for transparency
-  MARGINS margins = {-1, -1, -1, -1};
-  DwmExtendFrameIntoClientArea(hwnd, &margins);
-
-  // Disable non-client rendering (removes shadow)
-  DWMNCRENDERINGPOLICY policy = DWMNCRP_DISABLED;
-  DwmSetWindowAttribute(hwnd, DWMWA_NCRENDERING_POLICY, &policy,
-                         sizeof(policy));
+  // Use SetWindowCompositionAttribute for true per-pixel transparency.
+  // GradientColor=0x00000000 ensures no tint; AccentFlags=2 avoids border.
+  auto SetWindowCompositionAttribute =
+      reinterpret_cast<pfnSetWindowCompositionAttribute>(GetProcAddress(
+          GetModuleHandle(L"user32.dll"), "SetWindowCompositionAttribute"));
+  if (SetWindowCompositionAttribute) {
+    ACCENT_POLICY accent = {ACCENT_ENABLE_TRANSPARENTGRADIENT, 2, 0, 0};
+    WINDOWCOMPOSITIONATTRIBDATA data = {19, &accent, sizeof(accent)};
+    SetWindowCompositionAttribute(hwnd, &data);
+  }
 
   // Start click-through polling timer (50ms, matching macOS interval)
   SetTimer(hwnd, kClickThroughTimerId, 50, nullptr);

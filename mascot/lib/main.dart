@@ -14,14 +14,14 @@ void main(List<String> args) async {
   const windowSize = Size(424, 528);
   const windowOptions = WindowOptions(
     size: windowSize,
-    backgroundColor: Colors.transparent,
+    // Do not set backgroundColor here; transparency is handled
+    // by SetWindowCompositionAttribute in C++ (flutter_window.cpp).
+    // Do not set titleBarStyle; WS_POPUP in C++ already removes the frame.
     skipTaskbar: false,
-    titleBarStyle: TitleBarStyle.hidden,
     alwaysOnTop: true,
   );
 
   windowManager.waitUntilReadyToShow(windowOptions, () async {
-    await windowManager.setBackgroundColor(Colors.transparent);
 
     // Position at bottom-left of screen
     final primaryDisplay = await screenRetriever.getPrimaryDisplay();
