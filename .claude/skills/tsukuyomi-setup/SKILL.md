@@ -10,6 +10,17 @@ user_invocable: true
 
 COEIROINK v2 エンジンを使用したつくよみちゃんTTSのセットアップ、テスト、口パクマスコットとの連携設定を行う。
 
+## プラットフォーム判定
+
+最初にプラットフォームを判定し、以降のコマンドを分岐する:
+```bash
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) echo "WINDOWS" ;;
+  Darwin*)              echo "MACOS" ;;
+  *)                    echo "LINUX" ;;
+esac
+```
+
 ## 前提条件
 
 - COEIROINK v2 (ポート50032)
@@ -37,24 +48,29 @@ which flutter 2>/dev/null && echo "OK" || echo "NOT_FOUND"
 
 **COEIROINK v2 チェック:**
 
-まずアプリの存在を確認し、次に起動状態を確認する（未インストール vs 未起動を区別）:
-```bash
-# 1. アプリがインストールされているか
-ls /Applications/COEIROINKv2.app > /dev/null 2>&1 \
-  && echo "INSTALLED" || echo "NOT_INSTALLED"
+まず起動状態を確認し、次にアプリの存在を確認する:
 
-# 2. 起動しているか（インストール済みの場合のみ）
+```bash
+# 1. 起動しているか
 curl -s --connect-timeout 2 http://localhost:50032/v1/speakers > /dev/null 2>&1 \
   && echo "RUNNING" || echo "NOT_RUNNING"
 ```
-- **未インストールの場合** → 「COEIROINK v2 がインストールされていないようです。https://coeiroink.com からダウンロードできます。インストールしていますか？」と聞く
-- **インストール済みだが未起動の場合** → 「COEIROINK v2 がインストールされていますが起動していません。COEIROINKv2.app を起動してください」と案内する
+
+**macOS のみ — アプリ存在チェック:**
+```bash
+ls /Applications/COEIROINKv2.app > /dev/null 2>&1 \
+  && echo "INSTALLED" || echo "NOT_INSTALLED"
+```
+
+**Windows:** アプリ存在チェックは不要（インストール先が環境依存のため）。ポートチェックのみで判定する。
+
+- **未インストール / 未起動の場合** → 「COEIROINK v2 が起動していません。https://coeiroink.com からダウンロードし起動してください」と案内する
+- **macOS でインストール済みだが未起動の場合** → 「COEIROINK v2 がインストールされていますが起動していません。COEIROINKv2.app を起動してください」と案内する
 
 **判定ルール:**
 - Python 3 が無い場合: TTSもマスコットも動かないため、インストールを案内して中断
 - Flutter が無い場合: マスコットアプリのビルド(Step 7)をスキップ可能。TTS部分のみセットアップを続行するか聞く
-- COEIROINK v2 が未インストールの場合: https://coeiroink.com からダウンロードを案内
-- COEIROINK v2 が未起動の場合: COEIROINKv2.app の起動を促す
+- COEIROINK v2 が未起動の場合: 起動を促す
 
 すべての前提条件が揃っていることを確認してから Step 1 に進む。
 
@@ -68,6 +84,7 @@ curl -s --connect-timeout 2 http://localhost:50032/v1/speakers > /dev/null 2>&1 
 
 起動していない場合:
 - macOS: COEIROINKv2.app を開く
+- Windows: COEIROINK v2 を起動する
 - デフォルトポート 50032 で起動しているか確認
 
 ### Step 2: つくよみちゃんスピーカー確認
@@ -108,9 +125,13 @@ TOML
 
 ### Step 3.5: グローバルフックのデプロイ
 
-`~/.claude/hooks/` にTTSスクリプトと設定を配置する。ユーザーに「シンボリックリンクとコピー、どちらにしますか？」と聞く。
+`~/.claude/hooks/` にTTSスクリプトと設定を配置する。
 
-**選択肢A: シンボリックリンク（推奨）**
+**macOS / Linux:** ユーザーに「シンボリックリンクとコピー、どちらにしますか？」と聞く。
+
+**Windows:** シンボリックリンクは権限の問題があるため、コピーを使用する。
+
+**選択肢A: シンボリックリンク（macOS / Linux 推奨）**
 
 リポジトリのファイルを直接参照するため、更新が自動反映される:
 ```bash
@@ -125,14 +146,18 @@ for skill in tsukuyomi-setup tsukuyomi-cleanup tts tts-debug; do
 done
 ```
 
-**選択肢B: コピー**
+**選択肢B: コピー（Windows はこちらを使用）**
 
-リポジトリに依存しない独立したコピーを作成する（リポジトリを移動/削除しても動作する）:
+リポジトリに依存しない独立したコピーを作成する:
 ```bash
-mkdir -p ~/.claude/hooks
+mkdir -p ~/.claude/hooks ~/.claude/skills
+# フック
 cp .claude/hooks/mascot_tts.py ~/.claude/hooks/mascot_tts.py
 cp .claude/hooks/tts_config.toml ~/.claude/hooks/tts_config.toml 2>/dev/null || true
-# スキルはコピー不要（プロジェクト内の .claude/skills/ がそのまま使われる）
+# スキル
+for skill in tsukuyomi-setup tsukuyomi-cleanup tts tts-debug; do
+  cp -r ".claude/skills/$skill" ~/.claude/skills/
+done
 ```
 
 **確認:**
@@ -141,6 +166,10 @@ python3 ~/.claude/hooks/mascot_tts.py --emotion Gentle "グローバルフック
 ```
 
 ### Step 4: フォールバック画像のセットアップ
+
+**Windows:** リリース exe にアセットがバンドル済みのため、このステップはスキップする。
+
+**macOS / Linux:**
 
 utsutsu2d モデル (.inp) が既にある場合はこのステップをスキップする:
 ```bash
@@ -156,8 +185,30 @@ cd mascot && make setup-fallback
 
 ### Step 5: モデルディレクトリのセットアップ
 
+**Windows:** リリース exe にモデルがバンドル済みのため、このステップはスキップする。
+
+**macOS / Linux（gh CLI あり）:**
 ```bash
 cd mascot && make setup-models
+```
+
+**Windows / gh CLI なし:**
+```bash
+mkdir -p mascot/assets/models/blend_shape mascot/assets/models/parts
+cp -n mascot/config/examples/blend_shape.toml mascot/assets/models/blend_shape/emotions.toml 2>/dev/null || true
+cp -n mascot/config/examples/parts.toml mascot/assets/models/parts/emotions.toml 2>/dev/null || true
+curl -sL "https://api.github.com/repos/sawarae/utsutsu2d/releases/tags/v0.01" | \
+  python3 -c "
+import json, sys, urllib.request
+release = json.load(sys.stdin)
+for asset in release['assets']:
+    url = asset['browser_download_url']
+    name = asset['name']
+    if name.endswith('.inp'):
+        print(f'Downloading {name}...')
+        urllib.request.urlretrieve(url, 'mascot/assets/models/blend_shape/' + name)
+        print(f'  Saved to mascot/assets/models/blend_shape/{name}')
+"
 ```
 
 utsutsu2d モデルファイルがある場合（リネーム不要、`emotions.toml` の `[model] file` でファイル名を指定済み）:
@@ -186,9 +237,33 @@ python3 ~/.claude/hooks/mascot_tts.py --emotion Gentle "グローバルフック
 
 ### Step 7: マスコットアプリ起動テスト
 
+**macOS:**
 ```bash
 cd mascot && flutter run -d macos
 ```
+
+**Windows:**
+
+リリース済みの exe を使用する。Flutter ビルド環境は不要。
+
+1. GitHub Releases からダウンロードを案内する:
+```bash
+# 最新リリースのダウンロードURLを取得
+curl -sL "https://api.github.com/repos/sawarae/utsutsu-code/releases/latest" | \
+  python3 -c "
+import json, sys
+release = json.load(sys.stdin)
+print(f'Latest release: {release[\"tag_name\"]}')
+for asset in release['assets']:
+    if asset['name'].endswith('.zip') and 'windows' in asset['name']:
+        print(f'Download: {asset[\"browser_download_url\"]}')
+        print(f'  Size: {asset[\"size\"] // 1024 // 1024} MB')
+"
+```
+
+2. ユーザーにダウンロード・展開・起動を案内する:
+   - zip をダウンロードして任意の場所に展開
+   - `mascot.exe` を起動
 
 アプリが起動したら、別ターミナルでTTSテスト:
 ```bash
@@ -263,16 +338,17 @@ grep -q "mascot_tts.py" ~/.claude/CLAUDE.md 2>/dev/null && echo "OK" || echo "NO
 ## トラブルシューティング
 
 1. **COEIROINK v2 が起動していない**
-   - COEIROINKv2.app を起動する
-   - ポート確認: `lsof -i :50032`
+   - COEIROINK v2 アプリを起動する
+   - macOS: `lsof -i :50032`
+   - Windows: `netstat -an | findstr 50032`
 
 2. **つくよみちゃんが見つからない**
    - COEIROINK v2 でボイスデータをインストール
    - Step 2 でスピーカー一覧を確認
 
 3. **音声が再生されない**
-   - macOS の音量設定を確認
-   - `which afplay` で afplay が使えるか確認
+   - macOS: 音量設定を確認、`which afplay` で afplay が使えるか確認
+   - Windows: `mascot_tts.py` が powershell 経由で再生する（追加ツール不要）
 
 4. **マスコットが口パクしない**
    - シグナルディレクトリ確認: `ls ~/.claude/utsutsu-code/`
@@ -281,11 +357,12 @@ grep -q "mascot_tts.py" ~/.claude/CLAUDE.md 2>/dev/null && echo "OK" || echo "NO
 
 5. **フォールバック画像が表示されない**
    - `ls mascot/assets/fallback/` で画像があるか確認
-   - なければ `cd mascot && make setup-fallback` を実行
+   - macOS: `cd mascot && make setup-fallback` を実行
+   - Windows: Step 4 の curl コマンドを実行
 
 ## ファイル配置
 
-正のソースはリポジトリ内。`~/.claude/` にはシンボリックリンクを置く。
+正のソースはリポジトリ内。macOS/Linux では `~/.claude/` にシンボリックリンク、Windows ではコピーを置く。
 
 ### リポジトリ内（正のソース）
 
@@ -301,7 +378,7 @@ grep -q "mascot_tts.py" ~/.claude/CLAUDE.md 2>/dev/null && echo "OK" || echo "NO
 | `mascot/assets/models/` | utsutsu2dモデルディレクトリ |
 | `.claude/skills/` | スキル定義（コミット対象） |
 
-### グローバル（シンボリックリンク）
+### グローバル（シンボリックリンク / コピー）
 
 | リンク | リンク先 |
 |--------|---------|
@@ -309,7 +386,9 @@ grep -q "mascot_tts.py" ~/.claude/CLAUDE.md 2>/dev/null && echo "OK" || echo "NO
 | `~/.claude/hooks/tts_config.toml` | → `.claude/hooks/tts_config.toml` |
 | `~/.claude/skills/*` | → `.claude/skills/*` |
 
-### Makefile ターゲット
+**Windows の場合:** シンボリックリンクではなくコピーになるため、リポジトリ側を更新した場合は再度 `/tsukuyomi-setup` の Step 3.5 を実行してコピーを更新する。
+
+### Makefile ターゲット（macOS / Linux のみ）
 
 | ターゲット | 内容 |
 |-----------|------|
@@ -317,6 +396,8 @@ grep -q "mascot_tts.py" ~/.claude/CLAUDE.md 2>/dev/null && echo "OK" || echo "NO
 | `make clean` | ビルド + シグナル削除（安全） |
 | `make clean-assets` | モデル・画像を削除（要 `make setup` で再取得） |
 | `make clean-hooks` | グローバルフックを削除（要 `/tsukuyomi-setup` で再作成） |
+
+**Windows:** `make` が使えないため、各ステップの curl/python3 コマンドを直接実行する。
 
 ## 関連スキル
 
