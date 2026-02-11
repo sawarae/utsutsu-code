@@ -22,6 +22,14 @@
 [Gentle]
 description = "Calm, gentle"
 usage = "Greetings, explanations, normal reports"
+label = "穏やか"
+phrases = [
+  "元気ですか？",
+  "何かお手伝いしましょうか",
+  "よろしくお願いします",
+  "いつでも呼んでくださいね",
+  "お疲れさまです",
+]
 
 [Gentle.blend_shape]
 Gentle = 1.0
@@ -35,6 +43,14 @@ CheekType = 0.0           # Normal
 [Joy]
 description = "Happy, joyful"
 usage = "Test passed, build succeeded, task completed"
+label = "喜び"
+phrases = [
+  "やりました！",
+  "すごいですね！",
+  "成功です！",
+  "最高です！",
+  "やったー！",
+]
 
 [Joy.blend_shape]
 Joy = 1.0
@@ -48,6 +64,14 @@ CheekType = 0.333        # Blush
 [Blush]
 description = "Shy, bashful"
 usage = "Being praised, reporting minor mistakes"
+label = "照れ"
+phrases = [
+  "えへへ…",
+  "そんな、照れますよ…",
+  "ありがとうございます…",
+  "嬉しいです…",
+  "褒めすぎですよ…",
+]
 
 [Blush.blend_shape]
 Blush = 1.0
@@ -61,6 +85,14 @@ CheekType = 0.333        # Blush
 [Trouble]
 description = "Troubled, worried"
 usage = "Error occurred, test failed, warning"
+label = "困惑"
+phrases = [
+  "うーん、困りました…",
+  "どうしましょう…",
+  "大丈夫かな…",
+  "ちょっと心配です…",
+  "むむむ…",
+]
 
 [Trouble.blend_shape]
 Trouble = 1.0
@@ -74,6 +106,14 @@ CheekType = 0.0           # Normal
 [Singing]
 description = "Fun, excited"
 usage = "Celebration, jokes, completion fanfare"
+label = "ノリノリ"
+phrases = [
+  "ラララ〜♪",
+  "ルンルン♪",
+  "いえーい！",
+  "パーティーだ！",
+  "お祝いしましょう！",
+]
 
 [Singing.blend_shape]
 Singing = 1.0
@@ -95,6 +135,12 @@ blend_shape_open = 1.0
 parts_model_param = "MouthType"
 parts_model_open = 0.429  # OpenBigNormal
 interval_ms = 150
+
+# ── Haiku Phrase Generation ─────────────────────────────────
+[haiku]
+# Prompt template for Claude Haiku CLI phrase generation.
+# {emotion} is replaced with the emotion key at runtime.
+prompt = "次の感情で、つくよみちゃんのセリフを生成: {emotion}\n条件: ですます調、30文字以内、かわいい、プログラマーへの声かけ\n禁止: 括弧、説明文、前置き、装飾記号\n出力: セリフの文のみ1行"
 
 # ── Fallback Images ─────────────────────────────────────────
 [fallback]

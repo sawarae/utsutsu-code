@@ -44,14 +44,17 @@ jobs:
         working-directory: mascot
         run: flutter build windows --release
 
-      - name: Copy model files to build output
+      - name: Copy model and config files to build output
         working-directory: mascot
         run: |
           mkdir -p build/windows/x64/runner/Release/data/models/blend_shape
+          mkdir -p build/windows/x64/runner/Release/data/config
           cp assets/models/blend_shape/emotions.toml \
              build/windows/x64/runner/Release/data/models/blend_shape/
           cp assets/models/blend_shape/*.inp \
              build/windows/x64/runner/Release/data/models/blend_shape/
+          cp config/emotions.toml \
+             build/windows/x64/runner/Release/data/config/
           rm -f build/windows/x64/runner/Release/native_assets.json
 
       - name: Create zip archive

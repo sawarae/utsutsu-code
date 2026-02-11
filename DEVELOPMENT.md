@@ -26,7 +26,7 @@
 
 ## 感情システム
 
-感情は`mascot/emotions.toml`および各モデルの`emotions.toml`で定義:
+感情は`mascot/config/emotions.toml`および各モデルの`emotions.toml`で定義:
 
 | キー | 説明 | 用途 |
 |------|------|------|
@@ -75,8 +75,9 @@ mascot/
     mascot_controller.dart # シグナルファイルポーリング、感情状態、口パクアニメーション
     model_config.dart      # TOMLベースのモデル設定
     toml_parser.dart       # 軽量TOMLパーサー
-  config/examples/         # モデルタイプ別の感情設定例
-  emotions.toml            # 感情キーの正規定義
+  config/
+    emotions.toml          # 感情キー定義・フレーズ・俳句プロンプト
+    examples/              # モデルタイプ別の感情設定例
   macos/Runner/
     MainFlutterWindow.swift  # 透過、クリックスルー、ネイティブドラッグ (macOS)
   windows/runner/

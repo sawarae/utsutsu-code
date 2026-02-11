@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
@@ -10,20 +11,23 @@ import 'tts_service.dart';
 /// Coordinates right-click expression: phrase selection, expression display,
 /// TTS playback, and cleanup.
 class ExpressionService {
+  /// Sentinel message shown while Haiku is generating a phrase.
+  static const loadingMarker = '\x00loading';
   final MascotController _controller;
   final TtsService _tts = TtsService();
   final Random _random = Random();
 
   Map<String, List<String>> _phrases = {};
   Map<String, String> _labels = {};
+  String? _haikuPromptTemplate;
   bool _busy = false;
+  String? _pendingEmotion;
 
-  /// Emotion labels for the right-click menu, loaded from expressions.toml.
+  /// Emotion labels loaded from emotions.toml.
   /// Falls back to emotion keys if labels are not defined.
   Map<String, String> get emotionLabels =>
       _labels.isNotEmpty ? Map.unmodifiable(_labels) : _fallbackLabels;
 
-  /// Hardcoded fallback labels used when expressions.toml has no label fields.
   static const _fallbackLabels = {
     'Gentle': '穏やか',
     'Joy': '喜び',
@@ -32,7 +36,7 @@ class ExpressionService {
     'Singing': 'ノリノリ',
   };
 
-  /// Hardcoded fallback phrases used when expressions.toml is not found.
+  /// Hardcoded fallback phrases used when emotions.toml is not found.
   static const _fallbackPhrases = {
     'Gentle': ['元気ですか？', '何かお手伝いしましょうか', 'よろしくお願いします'],
     'Joy': ['やりました！', 'すごいですね！', '成功です！'],
@@ -42,17 +46,16 @@ class ExpressionService {
   };
 
   ExpressionService(this._controller) {
-    _loadPhrases();
+    _loadConfig();
   }
 
-  void _loadPhrases() {
+  void _loadConfig() {
     try {
-      // Try loading from config/expressions.toml relative to the executable
       final exeDir = File(Platform.resolvedExecutable).parent.path;
       final candidates = [
-        '$exeDir/data/config/expressions.toml',
-        '$exeDir/../config/expressions.toml',
-        'config/expressions.toml',
+        '$exeDir/data/config/emotions.toml',
+        '$exeDir/../config/emotions.toml',
+        'config/emotions.toml',
       ];
 
       for (final path in candidates) {
@@ -61,12 +64,16 @@ class ExpressionService {
           final toml = TomlParser.parse(file.readAsStringSync());
           _phrases = _parsePhrases(toml);
           _labels = _parseLabels(toml);
-          debugPrint('ExpressionService: loaded phrases from $path');
+          final haiku = toml['haiku'] as Map<String, dynamic>?;
+          if (haiku != null) {
+            _haikuPromptTemplate = haiku['prompt'] as String?;
+          }
+          debugPrint('ExpressionService: loaded config from $path');
           return;
         }
       }
     } catch (e) {
-      debugPrint('ExpressionService: failed to load expressions.toml: $e');
+      debugPrint('ExpressionService: failed to load emotions.toml: $e');
     }
 
     // Use hardcoded fallback
@@ -115,15 +122,27 @@ class ExpressionService {
 
   /// Trigger an expression: show emotion + phrase, play TTS, then reset.
   ///
-  /// If already busy (another expression is playing), this is a no-op.
+  /// Shows a static phrase immediately for responsiveness, then generates
+  /// a dynamic phrase via Claude Haiku in the background. Once Haiku returns,
+  /// the bubble text is swapped and TTS plays the generated phrase.
+  /// Falls back to static TOML phrases on Haiku failure.
+  /// If already busy, queues one expression to play after the current one.
   Future<void> express(String emotion) async {
-    if (_busy) return;
+    if (_busy) {
+      _pendingEmotion = emotion;
+      return;
+    }
     _busy = true;
 
     try {
-      final phrases = _phrases[emotion] ?? _fallbackPhrases[emotion] ?? ['…'];
-      final phrase = phrases[_random.nextInt(phrases.length)];
+      // Show loading animation immediately
+      _controller.showExpression(emotion, loadingMarker);
 
+      // Generate dynamic phrase, fall back to static
+      final haikuPhrase = await _generatePhrase(emotion);
+      final phrase = haikuPhrase ?? _pickStaticPhrase(emotion);
+
+      // Replace loading with actual text
       _controller.showExpression(emotion, phrase);
 
       // Try TTS; if unavailable, show expression for a fixed duration
@@ -139,7 +158,76 @@ class ExpressionService {
     } finally {
       _controller.hideExpression();
       _busy = false;
+
+      // Play queued expression if any
+      final next = _pendingEmotion;
+      _pendingEmotion = null;
+      if (next != null) {
+        express(next);
+      }
     }
+  }
+
+  String _pickStaticPhrase(String emotion) {
+    final phrases = _phrases[emotion] ?? _fallbackPhrases[emotion] ?? ['…'];
+    return phrases[_random.nextInt(phrases.length)];
+  }
+
+  /// Generate a phrase using Claude Haiku CLI.
+  /// Returns null on failure (CLI not found, timeout, invalid output).
+  Future<String?> _generatePhrase(String emotion) async {
+    if (_haikuPromptTemplate == null) return null;
+
+    try {
+      final prompt = _haikuPromptTemplate!.replaceAll('{emotion}', emotion);
+      final result = await Process.run(
+        'claude',
+        [
+          '--model', 'claude-haiku-4-5-20251001',
+          '--max-turns', '1',
+          '-p',
+          prompt,
+        ],
+        environment: {'PATH': _pathWithLocalBin()},
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
+      ).timeout(const Duration(seconds: 10));
+
+      if (result.exitCode != 0) {
+        debugPrint('ExpressionService: Haiku CLI failed: ${result.stderr}');
+        return null;
+      }
+
+      // Take the last non-empty line to skip any preamble
+      final lines = (result.stdout as String)
+          .trim()
+          .split('\n')
+          .where((l) => l.trim().isNotEmpty)
+          .toList();
+      if (lines.isEmpty) return null;
+
+      final output = lines.last.trim();
+      if (output.isEmpty || output.length > 30) {
+        debugPrint('ExpressionService: Haiku output invalid: "$output"');
+        return null;
+      }
+
+      debugPrint('ExpressionService: Haiku generated: "$output"');
+      return output;
+    } catch (e) {
+      debugPrint('ExpressionService: Haiku generation failed: $e');
+      return null;
+    }
+  }
+
+  /// Ensure ~/.local/bin is in PATH for the claude CLI.
+  static String _pathWithLocalBin() {
+    final path = Platform.environment['PATH'] ?? '';
+    final home = Platform.environment['HOME'] ?? '';
+    if (home.isNotEmpty) {
+      return '$home/.local/bin:$path';
+    }
+    return path;
   }
 
   void dispose() {

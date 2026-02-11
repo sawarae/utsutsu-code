@@ -1,4 +1,5 @@
 import 'dart:io' as io;
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -142,7 +143,10 @@ class _MascotWidgetState extends State<MascotWidget>
 
     final bubbleChanged = _showBubble != _controller.isSpeaking;
 
-    if (_controller.isSpeaking && _controller.message.isNotEmpty) {
+    final hasMessage = _controller.isSpeaking &&
+        (_controller.message.isNotEmpty ||
+            _controller.message == ExpressionService.loadingMarker);
+    if (hasMessage) {
       if (!_showBubble || _bubbleText != _controller.message) {
         setState(() {
           _showBubble = true;
@@ -282,6 +286,8 @@ class _SpeechBubble extends StatelessWidget {
 
   const _SpeechBubble({required this.text});
 
+  bool get _isLoading => text == ExpressionService.loadingMarker;
+
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -309,19 +315,98 @@ class _SpeechBubble extends StatelessWidget {
                 ),
               ],
             ),
-            child: Text(
-              text,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Colors.black87,
-                decoration: TextDecoration.none,
-              ),
-            ),
+            child: _isLoading
+                ? const SizedBox(
+                    width: 60,
+                    height: 16,
+                    child: _SquigglyLoader(),
+                  )
+                : Text(
+                    text,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.black87,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
           ),
         ),
       ],
     );
   }
+}
+
+/// Animated squiggly line loader shown while Haiku generates a phrase.
+class _SquigglyLoader extends StatefulWidget {
+  const _SquigglyLoader();
+
+  @override
+  State<_SquigglyLoader> createState() => _SquigglyLoaderState();
+}
+
+class _SquigglyLoaderState extends State<_SquigglyLoader>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        return CustomPaint(
+          painter: _SquigglyPainter(_controller.value),
+        );
+      },
+    );
+  }
+}
+
+class _SquigglyPainter extends CustomPainter {
+  final double phase;
+
+  _SquigglyPainter(this.phase);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.black38
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round;
+
+    final path = Path();
+    final midY = size.height / 2;
+    final amplitude = 4.0;
+    final wavelength = size.width / 3;
+    final phaseOffset = phase * 2 * math.pi;
+
+    path.moveTo(0, midY);
+    for (double x = 0; x <= size.width; x += 1) {
+      final y = midY +
+          amplitude * math.sin((x / wavelength) * 2 * math.pi + phaseOffset);
+      path.lineTo(x, y);
+    }
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(_SquigglyPainter old) => old.phase != phase;
 }
 
 class _BubbleTailPainter extends CustomPainter {

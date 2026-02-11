@@ -367,7 +367,7 @@ grep -q "mascot_tts.py" ~/.claude/CLAUDE.md 2>/dev/null && echo "OK" || echo "NO
 | `.claude/hooks/mascot_tts.py` | 汎用TTSディスパッチャ |
 | `.claude/hooks/tts_config.toml` | TTS設定（speaker_name等） |
 | `.claude/hooks/tts_config.example.toml` | 設定例 |
-| `mascot/emotions.toml` | 感情キー定義 |
+| `mascot/config/emotions.toml` | 感情キー定義 |
 | `mascot/config/examples/blend_shape.toml` | ブレンドシェイプモデル設定例 |
 | `mascot/config/examples/parts.toml` | パーツモデル設定例 |
 | `mascot/assets/fallback/` | フォールバック口パク画像 |
