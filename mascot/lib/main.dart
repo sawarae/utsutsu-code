@@ -131,6 +131,13 @@ class _ChildMascot {
   _ChildMascot({required this.signalDir, required this.controller});
 }
 
+/// A wander-mode child process spawned by the parent.
+class _WanderChild {
+  final int pid;
+  final String signalDir;
+  _WanderChild({required this.pid, required this.signalDir});
+}
+
 class MascotApp extends StatefulWidget {
   final _AppConfig config;
 
@@ -144,10 +151,12 @@ class _MascotAppState extends State<MascotApp> {
   static const _mainWidth = 424.0;
   static const _childWidth = 264.0;
   static const _windowHeight = 528.0;
+  static const _maxChildren = 5;
 
   late final MascotController _controller;
   WanderController? _wanderController;
   final List<_ChildMascot> _children = [];
+  final List<_WanderChild> _wanderChildren = [];
   Timer? _spawnTimer;
   late final String _spawnSignalPath;
 
@@ -193,9 +202,18 @@ class _MascotAppState extends State<MascotApp> {
     final file = File(_spawnSignalPath);
     if (!file.existsSync()) return;
 
+    // Atomically claim the signal file to prevent race conditions
+    final claimedPath = '${_spawnSignalPath}_processing';
     try {
-      final content = file.readAsStringSync().trim();
-      file.deleteSync();
+      file.renameSync(claimedPath);
+    } catch (_) {
+      return; // Another poller already claimed it
+    }
+
+    try {
+      final claimedFile = File(claimedPath);
+      final content = claimedFile.readAsStringSync().trim();
+      claimedFile.deleteSync();
 
       final json = jsonDecode(content) as Map<String, dynamic>;
       final signalDir = json['signal_dir'] as String;
@@ -231,6 +249,11 @@ class _MascotAppState extends State<MascotApp> {
   }
 
   void _spawnWanderProcess(String signalDir, String model) {
+    if (_wanderChildren.length >= _maxChildren) {
+      debugPrint('Max wander children reached ($_maxChildren), skipping spawn');
+      return;
+    }
+
     final exe = Platform.resolvedExecutable;
     final args = [
       '--wander',
@@ -242,7 +265,8 @@ class _MascotAppState extends State<MascotApp> {
       args.addAll(['--models-dir', widget.config.modelsDir!]);
     }
     Process.start(exe, args, mode: ProcessStartMode.detached).then((process) {
-      debugPrint('Spawned wander mascot: pid=${process.pid}');
+      _wanderChildren.add(_WanderChild(pid: process.pid, signalDir: signalDir));
+      debugPrint('Spawned wander mascot: pid=${process.pid} (${_wanderChildren.length}/$_maxChildren)');
     }).catchError((e) {
       debugPrint('Failed to spawn wander mascot: $e');
     });
@@ -266,6 +290,13 @@ class _MascotAppState extends State<MascotApp> {
   @override
   void dispose() {
     _spawnTimer?.cancel();
+    // Dismiss and kill all wander child processes
+    for (final child in _wanderChildren) {
+      try {
+        File('${child.signalDir}/mascot_dismiss').writeAsStringSync('');
+        Process.killPid(child.pid);
+      } catch (_) {}
+    }
     for (final child in _children) {
       child.controller.dispose();
     }
