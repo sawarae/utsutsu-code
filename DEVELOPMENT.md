@@ -1,3 +1,5 @@
+# 開発ガイド
+
 ## 機能
 
 - **utsutsu2dレンダリング**: `.inp`パペットモデルの読み込み（ブレンドシェイプ/パーツベースアニメーション対応）
@@ -61,7 +63,7 @@ cp .claude/hooks/tts_config.example.toml .claude/hooks/tts_config.toml
 2. 設定例をコピー: `cp mascot/config/examples/blend_shape.toml mascot/assets/models/your_character/emotions.toml`
 3. `emotions.toml`をモデルのパラメータ名と値に編集
 4. ディレクトリに`model.inp`ファイルを配置
-5. `cd mascot && MASCOT_MODEL=your_character flutter run -d macos`で起動
+5. `cd mascot && MASCOT_MODEL=your_character flutter run -d macos` (macOS) または `flutter run -d windows` (Windows) で起動
 
 ## プロジェクト構成
 
@@ -76,7 +78,10 @@ mascot/
   config/examples/         # モデルタイプ別の感情設定例
   emotions.toml            # 感情キーの正規定義
   macos/Runner/
-    MainFlutterWindow.swift  # 透過、クリックスルー、ネイティブドラッグ
+    MainFlutterWindow.swift  # 透過、クリックスルー、ネイティブドラッグ (macOS)
+  windows/runner/
+    flutter_window.cpp/.h    # 透過、クリックスルー、ネイティブドラッグ (Windows)
+    win32_window.cpp/.h      # ボーダーレスウィンドウ (Windows)
 .claude/
   hooks/
     mascot_tts.py          # 汎用TTSディスパッチャ
@@ -84,6 +89,32 @@ mascot/
   skills/                  # Claude Codeスキル定義
 README.md
 ```
+
+## Windows 開発
+
+### 前提条件
+
+- Flutter SDK 3.10+
+- Visual Studio 2022 (C++ デスクトップ開発ワークロード)
+- Python 3
+
+### 起動
+
+```bash
+cd mascot && flutter run -d windows
+```
+
+### ネイティブ実装
+
+Windows版の透過ウィンドウは `mascot/windows/runner/` で実装:
+
+- **flutter_window.cpp**: DWM透過設定、50msポーリングによるクリックスルー判定（`PrintWindow` + DIBセクションでアルファ値を読み取り）、ネイティブドラッグ
+- **win32_window.cpp**: `WS_POPUP` + `WS_EX_LAYERED` によるボーダーレス透過ウィンドウ
+
+### COEIROINK / VOICEVOX
+
+Windows版でも macOS と同じく COEIROINK v2 または VOICEVOX を使用可能。
+音声再生は PowerShell 経由で `System.Media.SoundPlayer` を使用。
 
 ## Claude Codeスキル
 
@@ -127,6 +158,35 @@ make clean          # ビルド + シグナル削除（安全）
 make clean-assets   # モデル・画像を削除
 make clean-hooks    # グローバルフックのリンク削除
 ```
+
+## CI / リリース
+
+### GitHub Actions (`release-windows.yml`)
+
+`v*` タグの push で Windows ビルドと GitHub Release 作成を自動実行する。
+
+**トリガー:**
+- `v*` タグ push → ビルド + GitHub Release 作成
+- `workflow_dispatch` → ビルド + artifact のみ（手動テスト用）
+
+**ステップ:**
+1. Flutter セットアップ (3.38.x, キャッシュ有効)
+2. `flutter pub get`
+3. `gh release download` でモデルファイル (.inp) を取得
+4. `flutter build windows --release`
+5. モデルファイルをビルド出力にコピー
+6. `Compress-Archive` で zip 作成
+7. `upload-artifact` で成果物を保存
+8. タグ push 時のみ `gh release create --generate-notes`
+
+**リリース手順:**
+
+```bash
+git tag v0.xx
+git push origin v0.xx
+```
+
+成果物は https://github.com/sawarae/utsutsu-code/releases に公開される。
 
 ## テスト
 

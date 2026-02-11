@@ -2,12 +2,17 @@ import 'dart:io' as io;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 import 'package:utsutsu2d/utsutsu2d.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'mascot_controller.dart';
 
 class MascotWidget extends StatefulWidget {
-  const MascotWidget({super.key});
+  final MascotController controller;
+
+  const MascotWidget({super.key, required this.controller});
 
   @override
   State<MascotWidget> createState() => _MascotWidgetState();
@@ -15,13 +20,24 @@ class MascotWidget extends StatefulWidget {
 
 class _MascotWidgetState extends State<MascotWidget>
     with SingleTickerProviderStateMixin {
-  final _controller = MascotController();
+  static const _clickThroughChannel = MethodChannel('mascot/click_through');
+
+  // Close button position/size in logical coordinates.
+  // Must match kCloseBtn* constants in flutter_window.h.
+  static const _closeBtnLeft = 228.0;
+  static const _closeBtnTop = 0.0;
+  static const _closeBtnSize = 36.0;
+
+  MascotController get _controller => widget.controller;
   late final AnimationController _fadeController;
   bool _showBubble = false;
   String _bubbleText = '';
 
   PuppetController? _puppetController;
   bool _modelLoaded = false;
+
+  /// Key for the speech bubble to measure its actual size.
+  final _bubbleKey = GlobalKey();
 
   @override
   void initState() {
@@ -32,6 +48,10 @@ class _MascotWidgetState extends State<MascotWidget>
     );
     _controller.addListener(_onControllerChanged);
     _loadModel();
+    // Push initial opaque regions after first frame renders
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pushOpaqueRegions();
+    });
   }
 
   Future<void> _loadModel() async {
@@ -44,7 +64,7 @@ class _MascotWidgetState extends State<MascotWidget>
         return;
       }
       final bytes = file.readAsBytesSync();
-      final fileName = config.modelFilePath.split('/').last;
+      final fileName = p.basename(config.modelFilePath);
       final model = ModelLoader.loadFromBytes(bytes, fileName);
 
       // Decode textures
@@ -90,10 +110,34 @@ class _MascotWidgetState extends State<MascotWidget>
     pc.updateManual();
   }
 
+  /// Push opaque regions to the native side for click-through hit testing.
+  /// Called on init and whenever the bubble state changes.
+  void _pushOpaqueRegions() {
+    if (!io.Platform.isWindows) return;
+
+    final regions = <Map<String, double>>[
+      // Character: 264x528 at bottom-left (full window height)
+      {'x': 0.0, 'y': 0.0, 'w': 264.0, 'h': 528.0},
+    ];
+
+    if (_showBubble) {
+      // Measure actual bubble size if available, otherwise use generous estimate
+      final bubbleBox =
+          _bubbleKey.currentContext?.findRenderObject() as RenderBox?;
+      final bubbleH = bubbleBox?.size.height ?? 120.0;
+      // Bubble: Positioned(left: 170, top: 40, right: 0) → x=150 to include tail
+      regions.add({'x': 150.0, 'y': 40.0, 'w': 274.0, 'h': bubbleH + 20});
+    }
+
+    _clickThroughChannel.invokeMethod('setOpaqueRegions', regions);
+  }
+
   void _onControllerChanged() {
     if (_modelLoaded) {
       _syncParameters();
     }
+
+    final bubbleChanged = _showBubble != _controller.isSpeaking;
 
     if (_controller.isSpeaking && _controller.message.isNotEmpty) {
       if (!_showBubble || _bubbleText != _controller.message) {
@@ -110,7 +154,15 @@ class _MascotWidgetState extends State<MascotWidget>
             _showBubble = false;
             _bubbleText = '';
           });
+          _pushOpaqueRegions();
         }
+      });
+    }
+
+    if (bubbleChanged && _showBubble) {
+      // Push after frame so bubble size is measured
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _pushOpaqueRegions();
       });
     }
   }
@@ -118,7 +170,6 @@ class _MascotWidgetState extends State<MascotWidget>
   @override
   void dispose() {
     _controller.removeListener(_onControllerChanged);
-    _controller.dispose();
     _fadeController.dispose();
     _puppetController?.dispose();
     super.dispose();
@@ -148,8 +199,40 @@ class _MascotWidgetState extends State<MascotWidget>
                     top: 40,
                     right: 0,
                     child: FadeTransition(
+                      key: _bubbleKey,
                       opacity: _fadeController,
                       child: _SpeechBubble(text: _bubbleText),
+                    ),
+                  ),
+                if (io.Platform.isWindows)
+                  Positioned(
+                    top: _closeBtnTop,
+                    left: _closeBtnLeft,
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => windowManager.close(),
+                        child: Container(
+                          width: _closeBtnSize,
+                          height: _closeBtnSize,
+                          alignment: Alignment.center,
+                          color: Colors.transparent,
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.5),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.close,
+                              size: 14,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
               ],

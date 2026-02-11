@@ -4,6 +4,7 @@ import 'toml_parser.dart';
 
 class ModelConfig {
   final String modelDirPath;
+  final String modelFile;
   final String name;
   final String idleEmotion;
   final double cameraZoom;
@@ -17,6 +18,7 @@ class ModelConfig {
 
   const ModelConfig._({
     required this.modelDirPath,
+    required this.modelFile,
     required this.name,
     required this.idleEmotion,
     required this.cameraZoom,
@@ -45,21 +47,38 @@ class ModelConfig {
     return ModelConfig._fromToml(dirPath, toml);
   }
 
-  /// Resolve model from `MASCOT_MODEL` env var.
-  /// Looks in `MASCOT_MODELS_DIR` (default: `assets/models/` relative to CWD).
-  factory ModelConfig.fromEnvironment() {
-    final modelName =
-        Platform.environment['MASCOT_MODEL'] ?? 'blend_shape';
-    final modelsDir =
-        Platform.environment['MASCOT_MODELS_DIR'] ?? 'assets/models';
-    final dirPath = '$modelsDir/$modelName';
+  /// Resolve model from CLI args, env vars, or defaults.
+  ///
+  /// Priority: CLI arg > env var > default.
+  /// Default models dir is `data/models` relative to the exe location.
+  factory ModelConfig.fromEnvironment({String? modelsDir, String? model}) {
+    final modelName = model
+        ?? Platform.environment['MASCOT_MODEL']
+        ?? 'blend_shape';
+    final baseDir = modelsDir
+        ?? Platform.environment['MASCOT_MODELS_DIR']
+        ?? _defaultModelsDir();
+    final dirPath = '$baseDir/$modelName';
     return ModelConfig.fromDirectory(dirPath);
+  }
+
+  /// Resolve default models dir.
+  ///
+  /// Tries in order:
+  /// 1. `data/models` next to the executable (release/distribution builds)
+  /// 2. `assets/models` relative to CWD (debug via `flutter run`)
+  static String _defaultModelsDir() {
+    final exeDir = File(Platform.resolvedExecutable).parent.path;
+    final releaseDir = '$exeDir/data/models';
+    if (Directory(releaseDir).existsSync()) return releaseDir;
+    return 'assets/models';
   }
 
   static ModelConfig _fromToml(String dirPath, Map<String, dynamic> toml) {
     // [model] section
     final model = toml['model'] as Map<String, dynamic>? ?? {};
     final name = (model['name'] as String?) ?? 'Unknown';
+    final modelFile = (model['file'] as String?) ?? 'model.inp';
     final idleEmotion = (model['idle_emotion'] as String?) ?? 'Gentle';
 
     // [camera] section
@@ -103,6 +122,7 @@ class ModelConfig {
 
     return ModelConfig._(
       modelDirPath: dirPath,
+      modelFile: modelFile,
       name: name,
       idleEmotion: idleEmotion,
       cameraZoom: zoom,
@@ -141,8 +161,8 @@ class ModelConfig {
     return defaultParameters[mouthParam] ?? 0.0;
   }
 
-  /// Path to the model.inp file in the model directory.
-  String get modelFilePath => '$modelDirPath/model.inp';
+  /// Path to the model file in the model directory.
+  String get modelFilePath => '$modelDirPath/$modelFile';
 
   @override
   bool operator ==(Object other) =>

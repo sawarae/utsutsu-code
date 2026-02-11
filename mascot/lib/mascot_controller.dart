@@ -7,17 +7,6 @@ import 'package:flutter/foundation.dart';
 import 'model_config.dart';
 
 class MascotController extends ChangeNotifier {
-  static final String _signalDir = () {
-    final home = Platform.environment['HOME'];
-    if (home == null) throw StateError('HOME environment variable not set');
-    final dir = '$home/.claude/utsutsu-code';
-    Directory(dir).createSync(recursive: true);
-    return dir;
-  }();
-
-  static String get _defaultSignalPath => '$_signalDir/mascot_speaking';
-  static String get _defaultListeningPath => '$_signalDir/mascot_listening';
-
   final String _signalPath;
   final String _listeningPath;
   late final ModelConfig _modelConfig;
@@ -45,10 +34,17 @@ class MascotController extends ChangeNotifier {
   bool get isSpeaking => _isSpeaking;
   bool get isListening => _isListening;
 
-  MascotController()
-      : _signalPath = _defaultSignalPath,
-        _listeningPath = _defaultListeningPath {
-    _modelConfig = ModelConfig.fromEnvironment();
+  MascotController({String? signalDir, String? modelsDir, String? model})
+      : this._fromDir(signalDir ?? _defaultSignalDir(),
+            modelsDir: modelsDir, model: model);
+
+  MascotController._fromDir(String dir, {String? modelsDir, String? model})
+      : _signalPath = '$dir/mascot_speaking',
+        _listeningPath = '$dir/mascot_listening' {
+    _modelConfig = ModelConfig.fromEnvironment(
+      modelsDir: modelsDir,
+      model: model,
+    );
     _parameters = Map<String, double>.from(_modelConfig.defaultParameters);
     _setEmotion(null); // Apply idle emotion
     _startPolling();
@@ -56,11 +52,22 @@ class MascotController extends ChangeNotifier {
 
   @visibleForTesting
   MascotController.withConfig(this._signalPath, ModelConfig config)
-      : _listeningPath = _defaultListeningPath {
+      : _listeningPath = '${File(_signalPath).parent.path}/mascot_listening' {
     _modelConfig = config;
     _parameters = Map<String, double>.from(_modelConfig.defaultParameters);
     _setEmotion(null); // Apply idle emotion
     _startPolling();
+  }
+
+  static String _defaultSignalDir() {
+    final home =
+        Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
+    if (home == null) {
+      throw StateError('HOME/USERPROFILE environment variable not set');
+    }
+    final dir = '$home/.claude/utsutsu-code';
+    Directory(dir).createSync(recursive: true);
+    return dir;
   }
 
   void _startPolling() {
