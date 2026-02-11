@@ -399,7 +399,7 @@ class _MascotWidgetState extends State<MascotWidget>
                     _isWander
                         ? Positioned(
                             left: 4,
-                            top: wanderBubbleTop - (i + 1) * 30.0,
+                            top: (wanderBubbleTop - (i + 1) * 30.0).clamp(0.0, wanderBubbleTop),
                             right: 4,
                             child: _WanderBubble(
                               text: _expressionService.activeBubbles[i].text,
