@@ -70,6 +70,7 @@ class _AppConfig {
   final double? width;
   final double? height;
   final bool wander;
+  final bool outline;
 
   const _AppConfig({
     this.modelsDir,
@@ -79,6 +80,7 @@ class _AppConfig {
     this.width,
     this.height,
     this.wander = false,
+    this.outline = false,
   });
 }
 
@@ -91,6 +93,7 @@ _AppConfig _parseArgs(List<String> args) {
   double? width;
   double? height;
   bool wander = false;
+  bool outline = false;
 
   for (var i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -110,6 +113,8 @@ _AppConfig _parseArgs(List<String> args) {
         wander = true;
       case '--no-wander':
         wander = false;
+      case '--outline':
+        outline = true;
     }
   }
 
@@ -121,6 +126,7 @@ _AppConfig _parseArgs(List<String> args) {
     width: width,
     height: height,
     wander: wander,
+    outline: outline,
   );
 }
 
@@ -318,6 +324,7 @@ class _MascotAppState extends State<MascotApp> {
         home: MascotWidget(
           controller: _controller,
           wanderController: _wanderController,
+          outlineEnabled: widget.config.outline,
         ),
       );
     }
@@ -334,7 +341,10 @@ class _MascotAppState extends State<MascotApp> {
           SizedBox(
             width: _mainWidth,
             height: _windowHeight,
-            child: MascotWidget(controller: _controller),
+            child: MascotWidget(
+              controller: _controller,
+              outlineEnabled: widget.config.outline,
+            ),
           ),
           for (var i = 0; i < _children.length; i++)
             SizedBox(
@@ -343,6 +353,7 @@ class _MascotAppState extends State<MascotApp> {
               child: MascotWidget(
                 key: ValueKey(_children[i].signalDir),
                 controller: _children[i].controller,
+                outlineEnabled: widget.config.outline,
                 onDismissComplete: () => _removeChildBySignalDir(_children[i].signalDir),
               ),
             ),

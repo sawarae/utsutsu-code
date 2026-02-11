@@ -15,6 +15,7 @@ import 'wander_controller.dart';
 class MascotWidget extends StatefulWidget {
   final MascotController controller;
   final WanderController? wanderController;
+  final bool outlineEnabled;
 
   /// Called when the dismiss animation completes.
   /// If null, the window is closed (main mascot behavior).
@@ -24,6 +25,7 @@ class MascotWidget extends StatefulWidget {
     super.key,
     required this.controller,
     this.wanderController,
+    this.outlineEnabled = false,
     this.onDismissComplete,
   });
 
@@ -477,32 +479,65 @@ class _MascotWidgetState extends State<MascotWidget>
   }
 
   Widget _buildCharacter() {
+    Widget character;
+
     if (_modelLoaded && _puppetController != null) {
-      return PuppetWidget(
+      character = PuppetWidget(
         controller: _puppetController!,
         interactive: false,
         backgroundColor: Colors.transparent,
       );
-    }
-
-    // Hide until model is loaded to prevent initial flicker
-    if (!_modelLoaded) {
+    } else if (!_modelLoaded) {
+      // Hide until model is loaded to prevent initial flicker
       return const SizedBox.shrink();
+    } else {
+      // Fallback to static PNG images loaded from filesystem
+      final config = _controller.modelConfig;
+      final path = _controller.showOpenMouth
+          ? config.fallbackMouthOpen
+          : config.fallbackMouthClosed;
+      final file = io.File(path);
+      if (file.existsSync()) {
+        character = Image.file(file, fit: BoxFit.contain);
+      } else {
+        character = const Center(
+          child: Icon(Icons.person, size: 128, color: Colors.grey),
+        );
+      }
     }
 
-    // Fallback to static PNG images loaded from filesystem
-    final config = _controller.modelConfig;
-    final path = _controller.showOpenMouth
-        ? config.fallbackMouthOpen
-        : config.fallbackMouthClosed;
-    final file = io.File(path);
-    if (file.existsSync()) {
-      return Image.file(file, fit: BoxFit.contain);
+    if (widget.outlineEnabled) {
+      character = _buildOutline(character);
     }
+    return character;
+  }
 
-    // Final fallback: grey placeholder icon
-    return const Center(
-      child: Icon(Icons.person, size: 128, color: Colors.grey),
+  /// Wraps the character with a white border and black outline using
+  /// dilate image filters to expand the character's silhouette.
+  Widget _buildOutline(Widget child) {
+    return Stack(
+      children: [
+        // Layer 1: Black outline (outermost, largest dilation)
+        ImageFiltered(
+          imageFilter: ui.ImageFilter.dilate(radiusX: 4, radiusY: 4),
+          child: ColorFiltered(
+            colorFilter:
+                const ColorFilter.mode(Colors.black, ui.BlendMode.srcATop),
+            child: child,
+          ),
+        ),
+        // Layer 2: White border (smaller dilation)
+        ImageFiltered(
+          imageFilter: ui.ImageFilter.dilate(radiusX: 2, radiusY: 2),
+          child: ColorFiltered(
+            colorFilter:
+                const ColorFilter.mode(Colors.white, ui.BlendMode.srcATop),
+            child: child,
+          ),
+        ),
+        // Layer 3: Original character on top
+        child,
+      ],
     );
   }
 }
