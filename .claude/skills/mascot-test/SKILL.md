@@ -34,8 +34,9 @@ os.makedirs(signal_dir, exist_ok=True)
 emotion = sys.argv[1] if len(sys.argv) > 1 else 'Gentle'
 message = sys.argv[2] if len(sys.argv) > 2 else 'テスト中です'
 
-with open(signal_path, 'w') as f:
-    json.dump({'message': message, 'emotion': emotion}, f, ensure_ascii=False)
+signal = json.dumps({'message': message, 'emotion': emotion})
+with open(signal_path, 'w', encoding='utf-8') as f:
+    f.write(signal)
 print(f'Signal written: {emotion} / {message}')
 
 time.sleep(3)
@@ -76,8 +77,9 @@ tests = [
 
 for emotion, message in tests:
     print(f'Testing: {emotion} / {message}')
-    with open(signal_path, 'w') as f:
-        json.dump({'message': message, 'emotion': emotion}, f, ensure_ascii=False)
+    signal = json.dumps({'message': message, 'emotion': emotion})
+    with open(signal_path, 'w', encoding='utf-8') as f:
+        f.write(signal)
     time.sleep(3)
     os.remove(signal_path)
     print(f'  -> OK')
