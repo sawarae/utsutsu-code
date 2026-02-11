@@ -10,6 +10,46 @@ user_invocable: true
 
 COEIROINK v2 エンジンを使用したつくよみちゃんTTSのセットアップ、テスト、口パクマスコットとの連携設定を行う。
 
+## 進捗管理（TaskCreate）
+
+スキル開始時に、以下のタスクを **TaskCreate で一括作成** してからステップを順に実行する。
+各ステップの開始時に `TaskUpdate(status: "in_progress")`、完了時に `TaskUpdate(status: "completed")` で進捗を更新する。
+スキップしたステップも理由をdescriptionに追記して `completed` にする。
+
+作成するタスク一覧（subject / activeForm）:
+
+| Step | subject | activeForm |
+|------|---------|------------|
+| 0 | 前提条件をチェック | 前提条件をチェック中 |
+| 1 | COEIROINK v2 の状態を確認 | COEIROINK v2 を確認中 |
+| 2 | つくよみちゃんスピーカーを確認 | スピーカーを確認中 |
+| 3 | TTS config を設定 | TTS config を設定中 |
+| 3.5 | グローバルフックをデプロイ | フックをデプロイ中 |
+| 4 | フォールバック画像をセットアップ | フォールバック画像をセットアップ中 |
+| 5 | モデルディレクトリをセットアップ | モデルをセットアップ中 |
+| 6 | TTS テストを実行 | TTS をテスト中 |
+| 7 | マスコットアプリを起動テスト | マスコットアプリをテスト中 |
+| 8 | settings.json を確認 | settings.json を確認中 |
+| 9 | グローバル CLAUDE.md を確認 | CLAUDE.md を確認中 |
+
+依存関係: Step 0 が全ステップをブロックする（`addBlockedBy` で設定）。それ以降は順次実行。
+
+**例:**
+```
+TaskCreate(subject: "前提条件をチェック", activeForm: "前提条件をチェック中", description: "Python3, Flutter, COEIROINK v2 の存在確認")
+TaskCreate(subject: "COEIROINK v2 の状態を確認", activeForm: "COEIROINK v2 を確認中", description: "ポート50032の応答確認")
+...（残りも同様に作成）
+
+// Step 0 開始
+TaskUpdate(id: "1", status: "in_progress")
+// ... チェック実行 ...
+TaskUpdate(id: "1", status: "completed")
+
+// Step 1 開始
+TaskUpdate(id: "2", status: "in_progress")
+// ...
+```
+
 ## プラットフォーム判定
 
 最初にプラットフォームを判定し、以降のコマンドを分岐する:
