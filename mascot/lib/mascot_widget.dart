@@ -337,6 +337,18 @@ class _MascotWidgetState extends State<MascotWidget>
                             _jumpController.forward(from: 0);
                             _expressionService.expressRandom();
                           },
+                          onPanStart: _isWander
+                              ? (_) => _wander!.startDrag()
+                              : null,
+                          onPanUpdate: _isWander
+                              ? (details) => _wander!.updateDrag(details.delta)
+                              : null,
+                          onPanEnd: _isWander
+                              ? (details) => _wander!.endDrag(
+                                    details.velocity.pixelsPerSecond.dx,
+                                    details.velocity.pixelsPerSecond.dy,
+                                  )
+                              : null,
                           child: _buildCharacter(),
                         ),
                       ),

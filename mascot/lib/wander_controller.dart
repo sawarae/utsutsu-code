@@ -23,6 +23,7 @@ class WanderController extends ChangeNotifier {
   double _x = 0;
   double _y = 0;
   double _screenWidth = 1920;
+  double _screenHeight = 1080;
   bool _facingLeft = false;
   bool _isPaused = false;
   double _speed; // px per tick (~30fps)
@@ -33,6 +34,12 @@ class WanderController extends ChangeNotifier {
   Timer? _pauseTimer;
   Timer? _decelerationTimer;
   double _speedMultiplier = 1.0;
+
+  // --- Drag state ---
+  bool _isDragging = false;
+  double _velocityX = 0;
+  double _velocityY = 0;
+  Timer? _inertiaTimer;
 
   // --- Bounce ---
   late final Ticker _bounceTicker;
@@ -55,6 +62,9 @@ class WanderController extends ChangeNotifier {
   bool get sparklesActive => _sparklesActive;
   String get armState => _armState;
   bool get isPaused => _isPaused;
+  bool get isDragging => _isDragging;
+  double get positionX => _x;
+  double get positionY => _y;
 
   /// Squish scale factors for the "mochi" deformation effect.
   ///
@@ -104,9 +114,10 @@ class WanderController extends ChangeNotifier {
 
   /// Initialise and start wandering. Call once after construction.
   Future<void> start() async {
-    // Determine screen width
+    // Determine screen dimensions
     final display = await screenRetriever.getPrimaryDisplay();
     _screenWidth = display.size.width;
+    _screenHeight = display.size.height;
 
     // Start at a random X within the screen
     _x = _rng.nextDouble() * (_screenWidth - windowWidth);
@@ -249,6 +260,119 @@ class WanderController extends ChangeNotifier {
     });
   }
 
+  // --- Drag support ---
+
+  /// Called when drag starts. Pauses autonomous movement.
+  void startDrag() {
+    _isDragging = true;
+    _moveTimer?.cancel();
+    _reverseTimer?.cancel();
+    _pauseTimer?.cancel();
+    _inertiaTimer?.cancel();
+    _isPaused = true;
+    notifyListeners();
+  }
+
+  /// Called during drag. Updates window position by delta.
+  void updateDrag(Offset delta) {
+    _x += delta.dx;
+    _y += delta.dy;
+    _x = _x.clamp(0.0, _screenWidth - windowWidth);
+    _y = _y.clamp(0.0, _screenHeight - windowHeight);
+    _updateWindowPosition();
+    notifyListeners();
+  }
+
+  /// Called when drag ends. Applies inertia based on velocity.
+  void endDrag(double velX, double velY) {
+    _isDragging = false;
+    _velocityX = velX / 30; // Convert px/sec to px/tick (33ms)
+    _velocityY = velY / 30;
+
+    if (_velocityX.abs() > 0.5) {
+      _facingLeft = _velocityX < 0;
+    }
+
+    const friction = 0.95;
+    const gravity = 0.5;
+    final bottomY = _screenHeight - windowHeight;
+
+    _inertiaTimer = Timer.periodic(const Duration(milliseconds: 33), (timer) {
+      _velocityX *= friction;
+      _velocityY *= friction;
+      _velocityY += gravity;
+      _x += _velocityX;
+      _y += _velocityY;
+
+      // Bounce off horizontal edges
+      if (_x <= 0) {
+        _x = 0;
+        _velocityX = -_velocityX * 0.5;
+      } else if (_x >= _screenWidth - windowWidth) {
+        _x = _screenWidth - windowWidth;
+        _velocityX = -_velocityX * 0.5;
+      }
+
+      // Bounce off top
+      if (_y < 0) {
+        _y = 0;
+        _velocityY = -_velocityY * 0.5;
+      }
+
+      // Settle at bottom
+      if (_y >= bottomY) {
+        _y = bottomY;
+        _velocityY = 0;
+      }
+
+      _updateWindowPosition();
+      notifyListeners();
+
+      // Stop when velocity is negligible and at bottom
+      if (_velocityX.abs() < 0.1 && _velocityY.abs() < 0.1 && (_y - bottomY).abs() < 1) {
+        timer.cancel();
+        _y = bottomY;
+        _isPaused = false;
+        // Resume autonomous wandering
+        _moveTimer = Timer.periodic(
+          const Duration(milliseconds: 33),
+          (_) => _tick(),
+        );
+        _scheduleReverse();
+        notifyListeners();
+      }
+    });
+  }
+
+  // --- Collision detection ---
+
+  /// Resolve collision with another mascot window (AABB).
+  bool resolveCollision(double otherX, double otherY, double otherW, double otherH) {
+    final myRight = _x + windowWidth;
+    final myBottom = _y + windowHeight;
+    final otherRight = otherX + otherW;
+    final otherBottom = otherY + otherH;
+
+    if (_x < otherRight && myRight > otherX && _y < otherBottom && myBottom > otherY) {
+      final overlapLeft = myRight - otherX;
+      final overlapRight = otherRight - _x;
+
+      if (overlapLeft < overlapRight) {
+        _x = otherX - windowWidth;
+        _facingLeft = true;
+      } else {
+        _x = otherRight;
+        _facingLeft = false;
+      }
+
+      _x = _x.clamp(0.0, _screenWidth - windowWidth);
+      _updateWindowPosition();
+      notifyListeners();
+      return true;
+    }
+    return false;
+  }
+
   // --- Arm/item switching ---
 
   void _scheduleArmSwitch() {
@@ -269,6 +393,7 @@ class WanderController extends ChangeNotifier {
     _reverseTimer?.cancel();
     _pauseTimer?.cancel();
     _decelerationTimer?.cancel();
+    _inertiaTimer?.cancel();
     _sparkleOnTimer?.cancel();
     _sparkleOffTimer?.cancel();
     _armTimer?.cancel();
