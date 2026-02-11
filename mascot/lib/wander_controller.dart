@@ -306,7 +306,6 @@ class WanderController extends ChangeNotifier {
     if (_dragSamples.length > 5) _dragSamples.removeAt(0);
 
     _updateWindowPosition();
-    notifyListeners();
   }
 
   /// Called when drag ends. Computes velocity from recent drag samples
