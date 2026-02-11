@@ -16,7 +16,7 @@ import urllib.request
 COEIROINK_URL = "http://localhost:50032"
 RELEASE_API = "https://api.github.com/repos/sawarae/utsutsu-code/releases/latest"
 MODEL_RELEASE_API = (
-    "https://api.github.com/repos/sawarae/utsutsu2d/releases/tags/v0.01"
+    "https://api.github.com/repos/sawarae/utsutsu2d/releases/tags/v0.03"
 )
 
 

@@ -66,11 +66,21 @@ class ModelConfig {
   ///
   /// Tries in order:
   /// 1. `data/models` next to the executable (release/distribution builds)
-  /// 2. `assets/models` relative to CWD (debug via `flutter run`)
+  /// 2. Walk up from exe to find `assets/models` (debug builds via `open -n`)
+  /// 3. `assets/models` relative to CWD (debug via `flutter run`)
   static String _defaultModelsDir() {
     final exeDir = File(Platform.resolvedExecutable).parent.path;
     final releaseDir = '$exeDir/data/models';
     if (Directory(releaseDir).existsSync()) return releaseDir;
+
+    // Debug: walk up from exe dir to find project assets
+    var dir = Directory(exeDir);
+    for (var i = 0; i < 10; i++) {
+      dir = dir.parent;
+      final candidate = Directory('${dir.path}/assets/models');
+      if (candidate.existsSync()) return candidate.path;
+    }
+
     return 'assets/models';
   }
 

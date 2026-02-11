@@ -19,7 +19,7 @@ When called without arguments, automatically select an appropriate message and e
 
 ## Emotion Keys
 
-See `mascot/emotions.toml` for the canonical reference:
+See `mascot/config/emotions.toml` for the canonical reference:
 
 | Key | Meaning | When to use |
 |-----|---------|-------------|

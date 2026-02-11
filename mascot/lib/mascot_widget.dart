@@ -1,25 +1,38 @@
 import 'dart:io' as io;
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
-import 'package:utsutsu2d/utsutsu2d.dart';
+import 'package:utsutsu2d/utsutsu2d.dart' hide Animation;
 import 'package:window_manager/window_manager.dart';
 
+import 'expression_service.dart';
 import 'mascot_controller.dart';
+import 'wander_controller.dart';
 
 class MascotWidget extends StatefulWidget {
   final MascotController controller;
+  final WanderController? wanderController;
 
-  const MascotWidget({super.key, required this.controller});
+  /// Called when the dismiss animation completes.
+  /// If null, the window is closed (main mascot behavior).
+  final VoidCallback? onDismissComplete;
+
+  const MascotWidget({
+    super.key,
+    required this.controller,
+    this.wanderController,
+    this.onDismissComplete,
+  });
 
   @override
   State<MascotWidget> createState() => _MascotWidgetState();
 }
 
 class _MascotWidgetState extends State<MascotWidget>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static const _clickThroughChannel = MethodChannel('mascot/click_through');
 
   // Close button position/size in logical coordinates.
@@ -29,7 +42,13 @@ class _MascotWidgetState extends State<MascotWidget>
   static const _closeBtnSize = 36.0;
 
   MascotController get _controller => widget.controller;
+  WanderController? get _wander => widget.wanderController;
+  bool get _isWander => _wander != null;
   late final AnimationController _fadeController;
+  late final AnimationController _jumpController;
+  late final Animation<double> _jumpAnimation;
+  late final AnimationController _dismissController;
+  late final ExpressionService _expressionService;
   bool _showBubble = false;
   String _bubbleText = '';
 
@@ -44,9 +63,28 @@ class _MascotWidgetState extends State<MascotWidget>
     super.initState();
     _fadeController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 1000),
     );
+    _jumpController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _jumpAnimation = TweenSequence<double>([
+      TweenSequenceItem(
+          tween: Tween<double>(begin: 0, end: -20), weight: 30),
+      TweenSequenceItem(
+          tween: Tween<double>(begin: -20, end: 0)
+              .chain(CurveTween(curve: Curves.bounceOut)),
+          weight: 70),
+    ]).animate(_jumpController);
+    _dismissController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _expressionService = ExpressionService(_controller);
+    _expressionService.addListener(_onBubblesChanged);
     _controller.addListener(_onControllerChanged);
+    _wander?.addListener(_onWanderChanged);
     _loadModel();
     // Push initial opaque regions after first frame renders
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -82,7 +120,12 @@ class _MascotWidgetState extends State<MascotWidget>
       // Set camera from model config
       final camera = pc.camera;
       if (camera != null) {
-        camera.zoom = config.cameraZoom;
+        var zoom = config.cameraZoom;
+        // Scale zoom for wander mode's smaller window
+        if (_isWander) {
+          zoom *= _wander!.windowWidth / 264.0;
+        }
+        camera.zoom = zoom;
         camera.position = Vec2(0, config.cameraY);
       }
 
@@ -115,9 +158,10 @@ class _MascotWidgetState extends State<MascotWidget>
   void _pushOpaqueRegions() {
     if (!io.Platform.isWindows) return;
 
+    final charW = _isWander ? _wander!.windowWidth : 264.0;
+    final charH = _isWander ? _wander!.windowHeight : 528.0;
     final regions = <Map<String, double>>[
-      // Character: 264x528 at bottom-left (full window height)
-      {'x': 0.0, 'y': 0.0, 'w': 264.0, 'h': 528.0},
+      {'x': 0.0, 'y': 0.0, 'w': charW, 'h': charH},
     ];
 
     if (_showBubble) {
@@ -129,17 +173,40 @@ class _MascotWidgetState extends State<MascotWidget>
       regions.add({'x': 150.0, 'y': 40.0, 'w': 274.0, 'h': bubbleH + 20});
     }
 
+    // Expression bubbles from right-click
+    for (var i = 0; i < _expressionService.activeBubbles.length; i++) {
+      final top = 40.0 + i * 50.0;
+      regions.add({'x': 150.0, 'y': top, 'w': 274.0, 'h': 60.0});
+    }
+
     _clickThroughChannel.invokeMethod('setOpaqueRegions', regions);
   }
 
   void _onControllerChanged() {
+    // Handle dismiss signal: play "pop" animation then close/notify
+    if (_controller.isDismissed && !_dismissController.isAnimating) {
+      _dismissController.forward().then((_) {
+        if (widget.onDismissComplete != null) {
+          widget.onDismissComplete!();
+        } else {
+          windowManager.close();
+          // Fallback: force exit if windowManager.close() doesn't terminate
+          Future.delayed(const Duration(seconds: 1), () => io.exit(0));
+        }
+      });
+      return;
+    }
+
     if (_modelLoaded) {
       _syncParameters();
     }
 
     final bubbleChanged = _showBubble != _controller.isSpeaking;
 
-    if (_controller.isSpeaking && _controller.message.isNotEmpty) {
+    final hasMessage = _controller.isSpeaking &&
+        (_controller.message.isNotEmpty ||
+            _controller.message == ExpressionService.loadingMarker);
+    if (hasMessage) {
       if (!_showBubble || _bubbleText != _controller.message) {
         setState(() {
           _showBubble = true;
@@ -167,10 +234,46 @@ class _MascotWidgetState extends State<MascotWidget>
     }
   }
 
+  Map<String, double>? _lastWanderOverrides;
+
+  void _onWanderChanged() {
+    if (!mounted) return;
+    // Only sync parameter overrides when sparkles/arm actually changed
+    final overrides = _wander!.parameterOverrides;
+    if (!_mapEquals(overrides, _lastWanderOverrides)) {
+      _lastWanderOverrides = overrides;
+      _controller.setWanderOverrides(overrides);
+    }
+    // Rebuild for bounce/squish transform (lightweight setState only)
+    setState(() {});
+  }
+
+  static bool _mapEquals(Map<String, double> a, Map<String, double>? b) {
+    if (b == null || a.length != b.length) return false;
+    for (final entry in a.entries) {
+      if (b[entry.key] != entry.value) return false;
+    }
+    return true;
+  }
+
+  void _onBubblesChanged() {
+    if (mounted) {
+      setState(() {});
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _pushOpaqueRegions();
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _wander?.removeListener(_onWanderChanged);
     _controller.removeListener(_onControllerChanged);
+    _expressionService.removeListener(_onBubblesChanged);
+    _expressionService.dispose();
     _fadeController.dispose();
+    _jumpController.dispose();
+    _dismissController.dispose();
     _puppetController?.dispose();
     super.dispose();
   }
@@ -179,32 +282,104 @@ class _MascotWidgetState extends State<MascotWidget>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: ListenableBuilder(
+      body: AnimatedBuilder(
+        animation: _dismissController,
+        builder: (context, child) {
+          final t = _dismissController.value;
+          // "Pop" effect: slight scale-up then shrink to 0, with fade
+          final scale = t < 0.2 ? 1.0 + t * 0.5 : (1.0 - t) * 1.25;
+          return Transform.scale(
+            scale: scale.clamp(0.0, 1.1),
+            alignment: Alignment.bottomCenter,
+            child: Opacity(
+              opacity: (1.0 - t).clamp(0.0, 1.0),
+              child: child,
+            ),
+          );
+        },
+        child: ListenableBuilder(
           listenable: _controller,
           builder: (context, _) {
+            final charW = _isWander ? _wander!.windowWidth : 264.0;
+            // Wander mode: fill the entire window height so the
+            // character head sits near the top and the speech bubble
+            // (overlaid at top:0) appears right above it.
+            final charH = _isWander
+                ? _wander!.windowHeight.toDouble()
+                : 528.0;
             return Stack(
               children: [
                 Positioned(
                   left: 0,
                   bottom: 0,
-                  child: SizedBox(
-                    width: 264,
-                    height: 528,
-                    child: _buildCharacter(),
+                  child: AnimatedBuilder(
+                    animation: _jumpAnimation,
+                    builder: (context, child) {
+                      return Transform.translate(
+                        offset: Offset(0, _jumpAnimation.value),
+                        child: child,
+                      );
+                    },
+                    child: _buildWanderWrapper(
+                      child: SizedBox(
+                        width: charW,
+                        height: charH,
+                        child: GestureDetector(
+                          onSecondaryTap: () {
+                            _jumpController.forward(from: 0);
+                            _expressionService.expressRandom();
+                          },
+                          child: _buildCharacter(),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
                 if (_showBubble)
-                  Positioned(
-                    left: 170,
-                    top: 40,
-                    right: 0,
-                    child: FadeTransition(
-                      key: _bubbleKey,
-                      opacity: _fadeController,
-                      child: _SpeechBubble(text: _bubbleText),
-                    ),
-                  ),
-                if (io.Platform.isWindows)
+                  _isWander
+                      ? Positioned(
+                          left: 4,
+                          top: 0,
+                          right: 4,
+                          child: FadeTransition(
+                            key: _bubbleKey,
+                            opacity: _fadeController,
+                            child: _WanderBubble(text: _bubbleText),
+                          ),
+                        )
+                      : Positioned(
+                          left: 170,
+                          top: 40,
+                          right: 0,
+                          child: FadeTransition(
+                            key: _bubbleKey,
+                            opacity: _fadeController,
+                            child: _SpeechBubble(text: _bubbleText),
+                          ),
+                        ),
+                // Expression bubbles from right-click
+                for (var i = 0;
+                    i < _expressionService.activeBubbles.length;
+                    i++)
+                  _isWander
+                      ? Positioned(
+                          left: 4,
+                          top: i * 30.0,
+                          right: 4,
+                          child: _WanderBubble(
+                            text: _expressionService.activeBubbles[i].text,
+                          ),
+                        )
+                      : Positioned(
+                          left: 170,
+                          top: 40.0 + i * 50.0,
+                          right: 0,
+                          child: _SpeechBubble(
+                            text: _expressionService.activeBubbles[i].text,
+                            showTail: i == 0,
+                          ),
+                        ),
+                if (io.Platform.isWindows && !_isWander)
                   Positioned(
                     top: _closeBtnTop,
                     left: _closeBtnLeft,
@@ -239,7 +414,40 @@ class _MascotWidgetState extends State<MascotWidget>
             );
           },
         ),
+      ),
+    );
+  }
+
+  /// Wraps the character with wander-mode transforms: horizontal flip,
+  /// bounce offset, and squishy deformation.
+  Widget _buildWanderWrapper({required Widget child}) {
+    if (!_isWander) return child;
+    final wander = _wander!;
+    final (sx, sy) = wander.squishScale;
+
+    // Layer 1: Squish (mochi deformation) anchored at bottom-center
+    Widget result = Transform.scale(
+      scaleX: sx,
+      scaleY: sy,
+      alignment: Alignment.bottomCenter,
+      child: child,
+    );
+
+    // Layer 2: Bounce offset (negative = up)
+    result = Transform.translate(
+      offset: Offset(0, wander.bounceOffset),
+      child: result,
+    );
+
+    // Layer 3: Horizontal flip when facing right (model default faces left)
+    if (!wander.facingLeft) {
+      result = Transform.flip(
+        flipX: true,
+        child: result,
       );
+    }
+
+    return result;
   }
 
   Widget _buildCharacter() {
@@ -270,8 +478,11 @@ class _MascotWidgetState extends State<MascotWidget>
 
 class _SpeechBubble extends StatelessWidget {
   final String text;
+  final bool showTail;
 
-  const _SpeechBubble({required this.text});
+  const _SpeechBubble({required this.text, this.showTail = true});
+
+  bool get _isLoading => text == ExpressionService.loadingMarker;
 
   @override
   Widget build(BuildContext context) {
@@ -279,13 +490,16 @@ class _SpeechBubble extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 12),
-          child: CustomPaint(
-            size: const Size(20, 14),
-            painter: _BubbleTailPainter(),
-          ),
-        ),
+        if (showTail)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: CustomPaint(
+              size: const Size(20, 14),
+              painter: _BubbleTailPainter(),
+            ),
+          )
+        else
+          const SizedBox(width: 20),
         Flexible(
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -300,19 +514,98 @@ class _SpeechBubble extends StatelessWidget {
                 ),
               ],
             ),
-            child: Text(
-              text,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Colors.black87,
-                decoration: TextDecoration.none,
-              ),
-            ),
+            child: _isLoading
+                ? const SizedBox(
+                    width: 60,
+                    height: 16,
+                    child: _SquigglyLoader(),
+                  )
+                : Text(
+                    text,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.black87,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
           ),
         ),
       ],
     );
   }
+}
+
+/// Animated squiggly line loader shown while Haiku generates a phrase.
+class _SquigglyLoader extends StatefulWidget {
+  const _SquigglyLoader();
+
+  @override
+  State<_SquigglyLoader> createState() => _SquigglyLoaderState();
+}
+
+class _SquigglyLoaderState extends State<_SquigglyLoader>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        return CustomPaint(
+          painter: _SquigglyPainter(_controller.value),
+        );
+      },
+    );
+  }
+}
+
+class _SquigglyPainter extends CustomPainter {
+  final double phase;
+
+  _SquigglyPainter(this.phase);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.black38
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round;
+
+    final path = Path();
+    final midY = size.height / 2;
+    final amplitude = 4.0;
+    final wavelength = size.width / 3;
+    final phaseOffset = phase * 2 * math.pi;
+
+    path.moveTo(0, midY);
+    for (double x = 0; x <= size.width; x += 1) {
+      final y = midY +
+          amplitude * math.sin((x / wavelength) * 2 * math.pi + phaseOffset);
+      path.lineTo(x, y);
+    }
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(_SquigglyPainter old) => old.phase != phase;
 }
 
 class _BubbleTailPainter extends CustomPainter {
@@ -326,6 +619,79 @@ class _BubbleTailPainter extends CustomPainter {
       ..moveTo(size.width, 0)
       ..lineTo(0, size.height)
       ..lineTo(size.width, size.height * 0.6)
+      ..close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// Compact speech bubble for wander mode, displayed above the character
+/// with a downward-pointing tail.
+class _WanderBubble extends StatelessWidget {
+  final String text;
+
+  const _WanderBubble({required this.text});
+
+  bool get _isLoading => text == ExpressionService.loadingMarker;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 3,
+                offset: Offset(0, 1),
+              ),
+            ],
+          ),
+          child: _isLoading
+              ? const SizedBox(
+                  width: 40,
+                  height: 10,
+                  child: _SquigglyLoader(),
+                )
+              : Text(
+                  text,
+                  style: const TextStyle(
+                    fontSize: 9,
+                    color: Colors.black87,
+                    decoration: TextDecoration.none,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+        ),
+        CustomPaint(
+          size: const Size(10, 6),
+          painter: _DownTailPainter(),
+        ),
+      ],
+    );
+  }
+}
+
+class _DownTailPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+
+    final path = Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width, 0)
+      ..lineTo(size.width / 2, size.height)
       ..close();
     canvas.drawPath(path, paint);
   }

@@ -9,12 +9,19 @@ import 'model_config.dart';
 class MascotController extends ChangeNotifier {
   final String _signalPath;
   final String _listeningPath;
+  final String _dismissPath;
   late final ModelConfig _modelConfig;
 
   bool _isSpeaking = false;
   bool _isListening = false;
+  bool _directExpression = false;
+  bool _dismissed = false;
   String _message = '';
   String? _currentEmotion;
+  Map<String, double> _wanderOverrides = {};
+
+  /// True when a dismiss signal has been received.
+  bool get isDismissed => _dismissed;
 
   late final Map<String, double> _parameters;
 
@@ -40,7 +47,8 @@ class MascotController extends ChangeNotifier {
 
   MascotController._fromDir(String dir, {String? modelsDir, String? model})
       : _signalPath = '$dir/mascot_speaking',
-        _listeningPath = '$dir/mascot_listening' {
+        _listeningPath = '$dir/mascot_listening',
+        _dismissPath = '$dir/mascot_dismiss' {
     _modelConfig = ModelConfig.fromEnvironment(
       modelsDir: modelsDir,
       model: model,
@@ -52,7 +60,8 @@ class MascotController extends ChangeNotifier {
 
   @visibleForTesting
   MascotController.withConfig(this._signalPath, ModelConfig config)
-      : _listeningPath = '${File(_signalPath).parent.path}/mascot_listening' {
+      : _listeningPath = '${File(_signalPath).parent.path}/mascot_listening',
+        _dismissPath = '${File(_signalPath).parent.path}/mascot_dismiss' {
     _modelConfig = config;
     _parameters = Map<String, double>.from(_modelConfig.defaultParameters);
     _setEmotion(null); // Apply idle emotion
@@ -78,6 +87,16 @@ class MascotController extends ChangeNotifier {
   }
 
   void _checkSignalFile() {
+    // Check dismiss signal
+    if (!_dismissed && File(_dismissPath).existsSync()) {
+      _dismissed = true;
+      notifyListeners();
+      return;
+    }
+
+    // Skip signal file polling while a direct expression is active
+    if (_directExpression) return;
+
     final file = File(_signalPath);
     final speaking = file.existsSync();
     if (speaking && !_isSpeaking) {
@@ -162,6 +181,7 @@ class MascotController extends ChangeNotifier {
         _parameters[entry.key] = entry.value;
       }
     }
+    _applyWanderOverrides();
   }
 
   void _startMouthAnimation() {
@@ -187,6 +207,44 @@ class MascotController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Directly trigger an expression (bypasses signal file).
+  /// Used by the right-click context menu.
+  void showExpression(String emotion, String message) {
+    _directExpression = true;
+    _isSpeaking = true;
+    _message = message;
+    _setEmotion(emotion);
+    _startMouthAnimation();
+    notifyListeners();
+  }
+
+  /// Reset to idle state (stop expression triggered by [showExpression]).
+  void hideExpression() {
+    _directExpression = false;
+    _isSpeaking = false;
+    _stopMouthAnimation();
+    _message = '';
+    _setEmotion(null);
+    notifyListeners();
+  }
+
+  /// Apply wander-mode parameter overrides on top of the current emotion.
+  ///
+  /// Call this whenever the wander controller changes sparkle/arm state.
+  /// The overrides are re-applied after every [_setEmotion] call so they
+  /// persist across emotion changes.
+  void setWanderOverrides(Map<String, double> overrides) {
+    _wanderOverrides = overrides;
+    _applyWanderOverrides();
+    notifyListeners();
+  }
+
+  void _applyWanderOverrides() {
+    for (final entry in _wanderOverrides.entries) {
+      _parameters[entry.key] = entry.value;
+    }
+  }
+
   @override
   void dispose() {
     _pollTimer?.cancel();
@@ -197,7 +255,7 @@ class MascotController extends ChangeNotifier {
 
   /// Remove stale signal files on shutdown.
   void _cleanup() {
-    for (final path in [_signalPath, _listeningPath]) {
+    for (final path in [_signalPath, _listeningPath, _dismissPath]) {
       try {
         final file = File(path);
         if (file.existsSync()) file.deleteSync();

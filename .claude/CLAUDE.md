@@ -5,7 +5,7 @@ Desktop mascot with lip-sync animation for AI coding assistants.
 ## つくよみちゃんTTS通知
 
 作業開始時と作業完了時に `python3 ~/.claude/hooks/mascot_tts.py --emotion KEY "要約(30文字以内)"` でつくよみちゃんに読み上げさせる。
-感情キーは `mascot/emotions.toml` を参照。状況に合った感情を選ぶこと。
+感情キーは `mascot/config/emotions.toml` を参照。状況に合った感情を選ぶこと。
 
 - **開始時**: `python3 ~/.claude/hooks/mascot_tts.py --emotion Gentle "透過の修正を始めます"`
 - **完了時**: `python3 ~/.claude/hooks/mascot_tts.py --emotion Joy "コミット完了しました"`
@@ -14,7 +14,7 @@ Desktop mascot with lip-sync animation for AI coding assistants.
 - 要約にアルファベットは使わず、日本語かカタカナ英語で書く（例: commit→コミット、README→リードミー）
 - 30文字以内
 
-感情キー（`mascot/emotions.toml`）:
+感情キー（`mascot/config/emotions.toml`）:
 - **Gentle** = 穏やか（挨拶、説明、通常の報告）
 - **Joy** = 喜び（テスト成功、ビルド成功、タスク完了）
 - **Blush** = 照れ（褒められた時、ちょっとした失敗）

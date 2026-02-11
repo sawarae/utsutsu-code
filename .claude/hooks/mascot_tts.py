@@ -13,7 +13,7 @@ Engine selection priority:
 
 Usage:
   python3 .claude/hooks/mascot_tts.py --emotion KEY "message"
-  python3 ~/.claude/hooks/mascot_tts.py --emotion KEY "message"
+  python3 ~/.claude/hooks/mascot_tts.py --signal-dir DIR --emotion KEY "message"
 """
 
 import json
@@ -87,7 +87,7 @@ def write_signal(text, emotion=None):
         signal = json.dumps({"message": text, "emotion": emotion})
     else:
         signal = text
-    Path(SIGNAL_FILE).write_text(signal)
+    Path(SIGNAL_FILE).write_text(signal, encoding="utf-8")
 
 
 def is_muted():
@@ -389,12 +389,68 @@ def main():
     except (json.JSONDecodeError, EOFError):
         hook_input = {}
 
-    # Parse --emotion KEY from argv
+    # Parse named flags from argv
     emotion = None
+    signal_dir = None
+    dismiss = False
+    spawn = False
+    spawn_model = None
     argv = sys.argv[1:]
-    if len(argv) >= 2 and argv[0] == "--emotion":
-        emotion = argv[1]
-        argv = argv[2:]
+    filtered = []
+    i = 0
+    while i < len(argv):
+        if argv[i] == "--emotion" and i + 1 < len(argv):
+            emotion = argv[i + 1]
+            i += 2
+        elif argv[i] == "--signal-dir" and i + 1 < len(argv):
+            signal_dir = os.path.expanduser(argv[i + 1])
+            i += 2
+        elif argv[i] == "--dismiss":
+            dismiss = True
+            i += 1
+        elif argv[i] == "--spawn":
+            spawn = True
+            i += 1
+        elif argv[i] == "--spawn-model" and i + 1 < len(argv):
+            spawn_model = argv[i + 1]
+            i += 2
+        else:
+            filtered.append(argv[i])
+            i += 1
+    argv = filtered
+
+    # Override global signal paths if --signal-dir specified
+    if signal_dir:
+        global SIGNAL_DIR, SIGNAL_FILE, MUTE_FILE
+        SIGNAL_DIR = signal_dir
+        SIGNAL_FILE = os.path.join(signal_dir, "mascot_speaking")
+        MUTE_FILE = os.path.join(signal_dir, "tts_muted")
+
+    # Dismiss: write dismiss signal and exit
+    if dismiss:
+        dismiss_path = os.path.join(SIGNAL_DIR, "mascot_dismiss")
+        os.makedirs(SIGNAL_DIR, exist_ok=True)
+        Path(dismiss_path).write_text("dismiss", encoding="utf-8")
+        print(json.dumps({"status": "dismissed", "signal_dir": SIGNAL_DIR}))
+        return
+
+    # Spawn: write spawn_child signal to PARENT mascot's signal dir
+    if spawn:
+        if not signal_dir:
+            print(json.dumps({"status": "error", "error": "--signal-dir required with --spawn"}))
+            return
+        # Always write to the default (parent) signal dir, not the overridden one
+        parent_dir = os.path.expanduser("~/.claude/utsutsu-code")
+        spawn_signal = os.path.join(parent_dir, "spawn_child")
+        os.makedirs(parent_dir, exist_ok=True)
+        payload = {"signal_dir": signal_dir}
+        if spawn_model:
+            payload["model"] = spawn_model
+        Path(spawn_signal).write_text(json.dumps(payload), encoding="utf-8")
+        # Ensure the child signal dir exists
+        os.makedirs(signal_dir, exist_ok=True)
+        print(json.dumps({"status": "spawned", "signal_dir": signal_dir}))
+        return
 
     # Custom message from argv, stdin JSON, or default
     if argv:

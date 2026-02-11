@@ -1,0 +1,69 @@
+# Blend Shape Mini Model Configuration
+# Lightweight model for task/sub-agent mascots
+
+[model]
+name = "Blend Shape Mini"
+file = "tsukuyomi_blend_shape_mini.inp"
+idle_emotion = "Gentle"
+
+[camera]
+zoom = 0.132
+y = -60.0
+
+[mouth]
+param = "MouthOpen"
+open_value = 1.0
+
+[fallback]
+mouth_open = "assets/fallback/mouth_open.png"
+mouth_closed = "assets/fallback/mouth_closed.png"
+
+# Mini model params: MouthOpen, Eye_Normal, Eye_Pinch, Eye_Happy,
+# Arm_Broom, Arm_Luggage, Arm_Empty,
+# Text_WhiteBorder, Text_NoBorder, Sparkles, Sweat
+
+[defaults]
+MouthOpen = 0.0
+Eye_Normal = 1.0
+Eye_Pinch = 0.0
+Eye_Happy = 0.0
+Arm_Broom = 0.0
+Arm_Luggage = 0.0
+Arm_Empty = 1.0
+Text_WhiteBorder = 0.0
+Text_NoBorder = 0.0
+Sparkles = 0.0
+Sweat = 0.0
+
+[emotions.Gentle]
+Eye_Normal = 1.0
+Eye_Pinch = 0.0
+Eye_Happy = 0.0
+Arm_Empty = 1.0
+Arm_Broom = 0.0
+Arm_Luggage = 0.0
+
+[emotions.Joy]
+Eye_Normal = 0.0
+Eye_Happy = 1.0
+Sparkles = 1.0
+Arm_Empty = 1.0
+
+[emotions.Blush]
+Eye_Normal = 0.0
+Eye_Happy = 1.0
+Sweat = 1.0
+Arm_Empty = 1.0
+
+[emotions.Trouble]
+Eye_Normal = 0.0
+Eye_Pinch = 1.0
+Sweat = 1.0
+Arm_Empty = 1.0
+
+[emotions.Singing]
+Eye_Normal = 0.0
+Eye_Happy = 1.0
+Sparkles = 1.0
+Arm_Broom = 1.0
+Arm_Empty = 0.0

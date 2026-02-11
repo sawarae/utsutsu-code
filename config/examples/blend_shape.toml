@@ -1,0 +1,41 @@
+# Blend Shape Model Configuration Example
+# Copy to assets/models/blend_shape/emotions.toml
+
+[model]
+name = "Blend Shape Example"
+idle_emotion = "Gentle"
+
+[camera]
+zoom = 0.132
+y = -60.0
+
+[mouth]
+param = "MouthOpen"
+open_value = 1.0
+
+[fallback]
+mouth_open = "assets/fallback/mouth_open.png"
+mouth_closed = "assets/fallback/mouth_closed.png"
+
+[defaults]
+MouthOpen = 0.0
+Gentle = 0.0
+Joy = 0.0
+Blush = 0.0
+Trouble = 0.0
+Singing = 0.0
+
+[emotions.Gentle]
+Gentle = 1.0
+
+[emotions.Joy]
+Joy = 1.0
+
+[emotions.Blush]
+Blush = 1.0
+
+[emotions.Trouble]
+Trouble = 1.0
+
+[emotions.Singing]
+Singing = 1.0
