@@ -35,6 +35,7 @@ DEFAULT_MESSAGE = "Task completed"
 MAX_MESSAGE_LENGTH = 30
 SIGNAL_DIR = os.path.expanduser("~/.claude/utsutsu-code")
 SIGNAL_FILE = os.path.join(SIGNAL_DIR, "mascot_speaking")
+MUTE_FILE = os.path.join(SIGNAL_DIR, "tts_muted")
 
 # Default ports
 COEIROINK_PORT = 50032
@@ -89,6 +90,11 @@ def write_signal(text, emotion=None):
     Path(SIGNAL_FILE).write_text(signal)
 
 
+def is_muted():
+    """Check if TTS audio is muted."""
+    return os.path.exists(MUTE_FILE)
+
+
 def clear_signal():
     """Remove the mascot speaking signal file."""
     try:
@@ -100,16 +106,20 @@ def clear_signal():
 def notify_fallback(message):
     """Fallback: show platform-native notification."""
     if sys.platform == "darwin":
+        # Escape backslashes and double quotes for osascript
+        safe = message.replace("\\", "\\\\").replace('"', '\\"')
         subprocess.run(
             [
                 "osascript",
                 "-e",
-                f'display notification "{message}" with title "Mascot TTS"',
+                f'display notification "{safe}" with title "Mascot TTS"',
             ],
             check=False,
             timeout=3,
         )
     elif sys.platform == "win32":
+        # Escape single quotes for PowerShell string interpolation
+        safe = message.replace("'", "''")
         # Non-blocking balloon tip notification
         subprocess.run(
             [
@@ -120,7 +130,7 @@ def notify_fallback(message):
                     "$n = New-Object System.Windows.Forms.NotifyIcon; "
                     "$n.Icon = [System.Drawing.SystemIcons]::Information; "
                     "$n.Visible = $true; "
-                    f"$n.ShowBalloonTip(3000, 'Mascot TTS', '{message}', "
+                    f"$n.ShowBalloonTip(3000, 'Mascot TTS', '{safe}', "
                     "[System.Windows.Forms.ToolTipIcon]::Info); "
                     "Start-Sleep -Milliseconds 3000; "
                     "$n.Dispose()"
@@ -143,12 +153,13 @@ def _play_wav(wav_path):
     if sys.platform == "darwin":
         subprocess.run(["afplay", wav_path], timeout=5, check=False)
     elif sys.platform == "win32":
+        safe_path = wav_path.replace("'", "''")
         subprocess.run(
             [
                 "powershell",
                 "-c",
                 (
-                    f"(New-Object System.Media.SoundPlayer('{wav_path}'))"
+                    f"(New-Object System.Media.SoundPlayer('{safe_path}'))"
                     ".PlaySync()"
                 ),
             ],
@@ -394,16 +405,22 @@ def main():
 
     config = load_config()
     result = {"status": "unknown"}
+    muted = is_muted()
 
     try:
-        adapter = resolve_adapter(config)
+        if muted:
+            logging.info("TTS muted, signal-only")
+            adapter = NoneAdapter()
+        else:
+            adapter = resolve_adapter(config)
         engine_name = type(adapter).__name__.replace("Adapter", "").lower()
 
         if isinstance(adapter, NoneAdapter):
             adapter.synthesize_and_play(message, emotion)
-            notify_fallback(message)
+            if not muted:
+                notify_fallback(message)
             result = {
-                "status": "fallback",
+                "status": "muted" if muted else "fallback",
                 "engine": "none",
                 "message": message,
             }
@@ -429,10 +446,11 @@ def main():
                 logging.warning("Speaker not found in %s", engine_name)
     except Exception as e:
         logging.error("TTS failed: %s", e)
-        try:
-            notify_fallback(message)
-        except Exception:
-            pass
+        if not muted:
+            try:
+                notify_fallback(message)
+            except Exception:
+                pass
         result = {"status": "error", "error": str(e), "message": message}
 
     print(json.dumps(result))

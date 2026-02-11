@@ -3,7 +3,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 import 'package:utsutsu2d/utsutsu2d.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'mascot_controller.dart';
 
@@ -56,7 +58,7 @@ class _MascotWidgetState extends State<MascotWidget>
         return;
       }
       final bytes = file.readAsBytesSync();
-      final fileName = config.modelFilePath.split('/').last;
+      final fileName = p.basename(config.modelFilePath);
       final model = ModelLoader.loadFromBytes(bytes, fileName);
 
       // Decode textures
@@ -194,6 +196,37 @@ class _MascotWidgetState extends State<MascotWidget>
                       key: _bubbleKey,
                       opacity: _fadeController,
                       child: _SpeechBubble(text: _bubbleText),
+                    ),
+                  ),
+                if (io.Platform.isWindows)
+                  Positioned(
+                    top: 0,
+                    left: 228,
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => windowManager.close(),
+                        child: Container(
+                          width: 36,
+                          height: 36,
+                          alignment: Alignment.center,
+                          color: Colors.transparent,
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.5),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.close,
+                              size: 14,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
               ],

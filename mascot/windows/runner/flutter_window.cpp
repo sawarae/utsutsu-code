@@ -135,7 +135,7 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
   // Handle WM_NCHITTEST BEFORE Flutter to decide drag vs click-through.
-  // Opaque region -> HTCAPTION (drag-to-move).
+  // Opaque region -> HTCAPTION (drag-to-move) or HTCLIENT (close button).
   // Transparent region -> HTTRANSPARENT (click passes to window below).
   if (message == WM_NCHITTEST) {
     POINT pt = {GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
@@ -155,6 +155,12 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     double logical_y = local_y / scale;
 
     if (IsPointInOpaqueRegion(logical_x, logical_y)) {
+      // Close button: left=228, top=0, size=36x36 (logical coords)
+      // Return HTCLIENT so Flutter receives the click event.
+      if (logical_x >= 228 && logical_x < 264 &&
+          logical_y >= 0 && logical_y < 36) {
+        return HTCLIENT;
+      }
       return HTCAPTION;
     }
     return HTTRANSPARENT;
@@ -176,7 +182,9 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
 
   switch (message) {
     case WM_FONTCHANGE:
-      flutter_controller_->engine()->ReloadSystemFonts();
+      if (flutter_controller_) {
+        flutter_controller_->engine()->ReloadSystemFonts();
+      }
       break;
     case WM_TIMER:
       if (wparam == kClickThroughTimerId) {
