@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' show Offset;
 
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mascot/mascot_controller.dart';
 import 'package:mascot/model_config.dart';
+import 'package:mascot/wander_controller.dart';
 
 const _blendShapeToml = '''
 [model]
@@ -501,6 +503,58 @@ void main() {
       final config = _blendShapeConfig('/tmp/test');
       expect(config.fallbackMouthOpen, 'assets/fallback/mouth_open.png');
       expect(config.fallbackMouthClosed, 'assets/fallback/mouth_closed.png');
+    });
+  });
+
+  // ── WanderController Tests ──────────────────────────────────
+
+  group('WanderController', () {
+    test('updateDrag does not call notifyListeners (no jitter)', () {
+      // Ensure binding is initialized for Ticker
+      TestWidgetsFlutterBinding.ensureInitialized();
+
+      final controller = WanderController(seed: 42);
+      // Enter drag mode first
+      controller.startDrag();
+
+      var listenerCallCount = 0;
+      controller.addListener(() {
+        listenerCallCount++;
+      });
+
+      // Reset count after addListener (startDrag already called notifyListeners)
+      listenerCallCount = 0;
+
+      // Perform several drag updates
+      controller.updateDrag(const Offset(10, 5));
+      controller.updateDrag(const Offset(-3, 2));
+      controller.updateDrag(const Offset(7, -1));
+
+      // updateDrag should NOT fire notifyListeners — the window moves but
+      // the widget inside the window stays put, so no rebuild is needed.
+      expect(listenerCallCount, 0,
+          reason: 'updateDrag must not call notifyListeners to avoid jitter');
+
+      controller.dispose();
+    });
+
+    test('updateDrag still updates position and clamps to screen bounds', () {
+      TestWidgetsFlutterBinding.ensureInitialized();
+
+      final controller = WanderController(seed: 42);
+      controller.startDrag();
+
+      // Move into the expected area
+      controller.updateDrag(const Offset(100, 200));
+      expect(controller.positionX, greaterThan(0));
+      expect(controller.positionY, greaterThan(0));
+
+      // Try to move beyond bounds (large negative delta)
+      controller.updateDrag(const Offset(-99999, -99999));
+      expect(controller.positionX, 0.0);
+      expect(controller.positionY, 0.0);
+
+      controller.dispose();
     });
   });
 }
