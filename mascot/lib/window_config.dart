@@ -49,6 +49,12 @@ class WindowConfig {
   final int collisionCooldownSeconds;
   final double broadcastThreshold;
 
+  // --- Swarm ---
+  final int swarmThreshold;
+  final int lod0TimeoutMs;
+  final int signalPollMs;
+  final double clickThroughInterval;
+
   const WindowConfig({
     this.mainWidth = 424.0,
     this.mainHeight = 528.0,
@@ -75,9 +81,13 @@ class WindowConfig {
     this.sparkleDurationMs = 3000,
     this.armDelayMinMs = 15000,
     this.armDelayMaxMs = 45000,
-    this.collisionCheckInterval = 6,
+    this.collisionCheckInterval = 18,
     this.collisionCooldownSeconds = 5,
-    this.broadcastThreshold = 2.0,
+    this.broadcastThreshold = 10.0,
+    this.swarmThreshold = 5,
+    this.lod0TimeoutMs = 3000,
+    this.signalPollMs = 200,
+    this.clickThroughInterval = 0.05,
   });
 
   /// Load from a TOML file, falling back to defaults for missing values.
@@ -130,6 +140,7 @@ class WindowConfig {
     final animation = _nested(toml, 'wander', 'animation');
     final behavior = _nested(toml, 'wander', 'behavior');
     final collision = _nested(toml, 'wander', 'collision');
+    final swarm = toml['swarm'] as Map<String, dynamic>? ?? {};
 
     return WindowConfig(
       mainWidth: _d(main['width']) ?? 424.0,
@@ -157,9 +168,13 @@ class WindowConfig {
       sparkleDurationMs: _i(behavior['sparkle_duration_ms']) ?? 3000,
       armDelayMinMs: _i(behavior['arm_delay_min_ms']) ?? 15000,
       armDelayMaxMs: _i(behavior['arm_delay_max_ms']) ?? 45000,
-      collisionCheckInterval: _i(collision['check_interval']) ?? 6,
+      collisionCheckInterval: _i(collision['check_interval']) ?? 18,
       collisionCooldownSeconds: _i(collision['cooldown_seconds']) ?? 5,
-      broadcastThreshold: _d(collision['broadcast_threshold']) ?? 2.0,
+      broadcastThreshold: _d(collision['broadcast_threshold']) ?? 10.0,
+      swarmThreshold: _i(swarm['swarm_threshold']) ?? 5,
+      lod0TimeoutMs: _i(swarm['lod0_timeout_ms']) ?? 3000,
+      signalPollMs: _i(swarm['signal_poll_ms']) ?? 200,
+      clickThroughInterval: _d(swarm['click_through_interval']) ?? 0.05,
     );
   }
 

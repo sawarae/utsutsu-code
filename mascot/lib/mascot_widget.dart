@@ -38,6 +38,7 @@ class _MascotWidgetState extends State<MascotWidget>
   static const _clickThroughChannel = MethodChannel('mascot/click_through');
   static const _nativeDragChannel = MethodChannel('mascot/native_drag');
   static const _windowReadyChannel = MethodChannel('mascot/window_ready');
+  static const _wanderModeChannel = MethodChannel('mascot/wander_mode');
 
   // Close button position/size in logical coordinates.
   // Must match kCloseBtn* constants in flutter_window.h.
@@ -100,9 +101,11 @@ class _MascotWidgetState extends State<MascotWidget>
       _expressionService.expressCollision();
     };
     _loadModel();
-    // In wander mode, disable native window dragging so Flutter handles it
+    // In wander mode, disable native window dragging so Flutter handles it,
+    // and skip CGWindowListCreateImage-based click-through tracking
     if (_isWander && io.Platform.isMacOS) {
       _nativeDragChannel.invokeMethod('setEnabled', false);
+      _wanderModeChannel.invokeMethod('setEnabled', true);
     }
     // Push initial opaque regions after first frame renders
     WidgetsBinding.instance.addPostFrameCallback((_) {

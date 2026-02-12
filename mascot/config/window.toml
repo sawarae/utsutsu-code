@@ -39,6 +39,13 @@ arm_delay_min_ms = 15000
 arm_delay_max_ms = 45000
 
 [wander.collision]
-check_interval = 6
+check_interval = 18
 cooldown_seconds = 5
-broadcast_threshold = 2.0
+broadcast_threshold = 10.0
+
+[swarm]
+# Swarm overlay is used when max_children > swarm_threshold
+swarm_threshold = 5
+lod0_timeout_ms = 3000
+signal_poll_ms = 200
+click_through_interval = 0.05

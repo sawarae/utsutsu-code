@@ -256,7 +256,7 @@ class WanderController extends ChangeNotifier {
     final ms = elapsed.inMilliseconds % config.bouncePeriodMs;
     final newPhase = (ms / config.bouncePeriodMs) * 2 * pi;
     // Skip notification if phase change is negligible (< ~2° visual difference)
-    if ((newPhase - _bouncePhase).abs() < 0.035) return;
+    if ((newPhase - _bouncePhase).abs() < 0.1) return;
     _bouncePhase = newPhase;
     notifyListeners();
   }

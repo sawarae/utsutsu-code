@@ -1,0 +1,124 @@
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+
+import 'mascot_entity.dart';
+import 'sprite_cache.dart';
+import 'swarm_simulation.dart';
+
+/// CustomPainter that batch-draws all sprite-mode (LOD1) entities.
+///
+/// The active entity (LOD0) is excluded from sprite rendering and drawn
+/// separately as a full PuppetWidget overlay.
+class SwarmPainter extends CustomPainter {
+  final SwarmSimulation simulation;
+  final SpriteCache sprites;
+  final int? activeEntityIndex;
+
+  SwarmPainter({
+    required this.simulation,
+    required this.sprites,
+    this.activeEntityIndex,
+  }) : super(repaint: simulation);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (!sprites.isReady) return;
+
+    final paint = Paint();
+
+    for (var i = 0; i < simulation.entities.length; i++) {
+      if (i == activeEntityIndex) continue;
+      final e = simulation.entities[i];
+      if (e.dismissed) continue;
+
+      final sprite = sprites.getFrame(e.facingLeft, e.isSpeaking);
+      if (sprite == null) continue;
+
+      final (sx, sy) = e.squishScale;
+
+      canvas.save();
+      canvas.translate(e.x, e.y + e.bounceOffset);
+
+      // Apply squish from bottom center
+      if (sx != 1.0 || sy != 1.0) {
+        canvas.translate(sprites.spriteWidth / 2, sprites.spriteHeight);
+        canvas.scale(sx, sy);
+        canvas.translate(-sprites.spriteWidth / 2, -sprites.spriteHeight);
+      }
+
+      canvas.drawImage(sprite, Offset.zero, paint);
+      canvas.restore();
+
+      // Draw speech bubble if speaking
+      if (e.isSpeaking && e.message.isNotEmpty) {
+        _drawBubble(canvas, e);
+      }
+    }
+  }
+
+  void _drawBubble(Canvas canvas, MascotEntity e) {
+    final bubbleX = e.x + sprites.spriteWidth / 2;
+    final bubbleY = e.y + e.bounceOffset - 10;
+
+    // Measure text
+    final textSpan = TextSpan(
+      text: e.message,
+      style: const TextStyle(
+        fontSize: 9,
+        color: Colors.black87,
+      ),
+    );
+    final textPainter = TextPainter(
+      text: textSpan,
+      textDirection: TextDirection.ltr,
+      maxLines: 2,
+    )..layout(maxWidth: sprites.spriteWidth - 12);
+
+    final bubbleW = textPainter.width + 12;
+    final bubbleH = textPainter.height + 6;
+    final bubbleRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        bubbleX - bubbleW / 2,
+        bubbleY - bubbleH - 6,
+        bubbleW,
+        bubbleH,
+      ),
+      const Radius.circular(8),
+    );
+
+    // Background
+    canvas.drawRRect(
+      bubbleRect,
+      Paint()..color = Colors.white,
+    );
+    // Shadow
+    canvas.drawRRect(
+      bubbleRect,
+      Paint()
+        ..color = Colors.black26
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+    );
+    // Background again (over shadow)
+    canvas.drawRRect(
+      bubbleRect,
+      Paint()..color = Colors.white,
+    );
+
+    // Tail
+    final tailPath = ui.Path()
+      ..moveTo(bubbleX - 5, bubbleY - 6)
+      ..lineTo(bubbleX, bubbleY)
+      ..lineTo(bubbleX + 5, bubbleY - 6)
+      ..close();
+    canvas.drawPath(tailPath, Paint()..color = Colors.white);
+
+    // Text
+    textPainter.paint(canvas, Offset(bubbleX - bubbleW / 2 + 6, bubbleY - bubbleH - 3));
+  }
+
+  @override
+  bool shouldRepaint(SwarmPainter oldDelegate) {
+    return oldDelegate.activeEntityIndex != activeEntityIndex;
+  }
+}

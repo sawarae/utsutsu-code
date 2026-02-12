@@ -987,9 +987,9 @@ void main() {
       expect(config.squishAmount, 0.03);
       expect(config.speedMin, 0.4);
       expect(config.speedMax, 1.2);
-      expect(config.collisionCheckInterval, 6);
+      expect(config.collisionCheckInterval, 18);
       expect(config.collisionCooldownSeconds, 5);
-      expect(config.broadcastThreshold, 2.0);
+      expect(config.broadcastThreshold, 10.0);
     });
 
     test('fromTomlString parses all sections', () {
