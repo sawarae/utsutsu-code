@@ -17,12 +17,7 @@ def main():
     if data.get("tool_name") != "Task":
         return
 
-    # Skip TTS injection for lightweight agent types
     tool_input = data.get("tool_input", {})
-    agent_type = tool_input.get("subagent_type", "")
-    model = tool_input.get("model", "")
-    if agent_type in ("haiku", "Explore") or model == "haiku":
-        return
 
     # Check if mascot app is running
     try:
