@@ -84,12 +84,16 @@ def load_config():
 
 
 def write_signal(text, emotion=None):
-    """Write the mascot speaking signal file."""
+    """Write the mascot speaking signal file (envelope format v1)."""
     os.makedirs(SIGNAL_DIR, exist_ok=True)
+    payload = {"message": text}
     if emotion:
-        signal = json.dumps({"message": text, "emotion": emotion})
-    else:
-        signal = text
+        payload["emotion"] = emotion
+    signal = json.dumps({
+        "version": "1",
+        "type": "mascot.speech",
+        "payload": payload,
+    })
     Path(SIGNAL_FILE).write_text(signal, encoding="utf-8")
 
 

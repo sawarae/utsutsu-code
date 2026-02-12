@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mascot/mascot_controller.dart';
 import 'package:mascot/model_config.dart';
 import 'package:mascot/wander_controller.dart';
+import 'package:mascot/window_config.dart';
 
 const _blendShapeToml = '''
 [model]
@@ -871,6 +872,192 @@ void main() {
       expect(legacyFile.existsSync(), true);
       legacyFile.deleteSync();
       expect(legacyFile.existsSync(), false);
+    });
+  });
+
+  // ── Signal Envelope Tests (#39) ─────────────────────────────
+
+  group('Signal envelope format', () {
+    late Directory signalDir;
+    late MascotController controller;
+
+    setUp(() {
+      signalDir = Directory.systemTemp.createTempSync('envelope_test_');
+      File('${signalDir.path}/mascot_speaking').createSync();
+      controller = MascotController.withConfig(
+        '${signalDir.path}/mascot_speaking',
+        _blendShapeConfig('/tmp/test'),
+      );
+    });
+
+    tearDown(() {
+      controller.dispose();
+      signalDir.deleteSync(recursive: true);
+    });
+
+    test('envelope v1 speech signal sets message and emotion', () async {
+      final envelope = jsonEncode({
+        'version': '1',
+        'type': 'mascot.speech',
+        'payload': {'message': 'こんにちは', 'emotion': 'Joy'},
+      });
+      File('${signalDir.path}/mascot_speaking')
+          .writeAsStringSync(envelope);
+
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(controller.message, 'こんにちは');
+      expect(controller.isSpeaking, true);
+    });
+
+    test('legacy JSON signal still works (backward compatible)', () async {
+      final legacy = jsonEncode({
+        'message': 'レガシー形式',
+        'emotion': 'Gentle',
+      });
+      File('${signalDir.path}/mascot_speaking')
+          .writeAsStringSync(legacy);
+
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(controller.message, 'レガシー形式');
+      expect(controller.isSpeaking, true);
+    });
+
+    test('plain text signal still works (backward compatible)', () async {
+      File('${signalDir.path}/mascot_speaking')
+          .writeAsStringSync('プレーンテキスト');
+
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(controller.message, 'プレーンテキスト');
+      expect(controller.isSpeaking, true);
+    });
+
+    test('spawn signal envelope is unwrapped correctly', () {
+      final envelope = jsonEncode({
+        'version': '1',
+        'type': 'mascot.spawn',
+        'payload': {'task_id': 'abc12345'},
+      });
+      final json = jsonDecode(envelope) as Map<String, dynamic>;
+      // Unwrap envelope
+      final payload = json.containsKey('version')
+          ? (json['payload'] as Map<String, dynamic>? ?? {})
+          : json;
+      expect(payload['task_id'], 'abc12345');
+    });
+
+    test('legacy spawn signal is read directly', () {
+      final legacy = jsonEncode({'task_id': 'def67890'});
+      final json = jsonDecode(legacy) as Map<String, dynamic>;
+      // No envelope, read directly
+      final payload = json.containsKey('version')
+          ? (json['payload'] as Map<String, dynamic>? ?? {})
+          : json;
+      expect(payload['task_id'], 'def67890');
+    });
+
+    test('position envelope is unwrapped for collision', () {
+      final envelope = jsonEncode({
+        'version': '1',
+        'type': 'mascot.position',
+        'payload': {'x': 100.0, 'y': 200.0, 'w': 150.0, 'h': 350.0},
+      });
+      final json = jsonDecode(envelope) as Map<String, dynamic>;
+      final data = json.containsKey('version')
+          ? (json['payload'] as Map<String, dynamic>? ?? {})
+          : json;
+      expect((data['x'] as num).toDouble(), 100.0);
+      expect((data['y'] as num).toDouble(), 200.0);
+    });
+  });
+
+  // ── WindowConfig Tests (#38) ──────────────────────────────
+
+  group('WindowConfig', () {
+    test('default constructor provides expected values', () {
+      const config = WindowConfig();
+      expect(config.mainWidth, 424.0);
+      expect(config.mainHeight, 528.0);
+      expect(config.childWidth, 264.0);
+      expect(config.maxChildren, 5);
+      expect(config.wanderWidth, 190.0);
+      expect(config.wanderHeight, 350.0);
+      expect(config.gravity, 0.8);
+      expect(config.bouncePeriodMs, 600);
+      expect(config.bounceHeight, 6.0);
+      expect(config.squishAmount, 0.03);
+      expect(config.speedMin, 0.4);
+      expect(config.speedMax, 1.2);
+      expect(config.collisionCheckInterval, 6);
+      expect(config.collisionCooldownSeconds, 5);
+      expect(config.broadcastThreshold, 2.0);
+    });
+
+    test('fromTomlString parses all sections', () {
+      const toml = '''
+[main_window]
+width = 500.0
+height = 600.0
+
+[child_window]
+width = 300.0
+max_children = 3
+
+[wander_window]
+width = 200.0
+height = 400.0
+
+[wander.physics]
+gravity = 1.0
+bounce_damping = 0.5
+
+[wander.animation]
+bounce_period_ms = 800
+bounce_height = 8.0
+
+[wander.behavior]
+speed_min = 0.5
+speed_max = 2.0
+
+[wander.collision]
+check_interval = 10
+cooldown_seconds = 3
+broadcast_threshold = 5.0
+''';
+      final config = WindowConfig.fromTomlString(toml);
+      expect(config.mainWidth, 500.0);
+      expect(config.mainHeight, 600.0);
+      expect(config.childWidth, 300.0);
+      expect(config.maxChildren, 3);
+      expect(config.wanderWidth, 200.0);
+      expect(config.wanderHeight, 400.0);
+      expect(config.gravity, 1.0);
+      expect(config.bounceDamping, 0.5);
+      expect(config.bouncePeriodMs, 800);
+      expect(config.bounceHeight, 8.0);
+      expect(config.speedMin, 0.5);
+      expect(config.speedMax, 2.0);
+      expect(config.collisionCheckInterval, 10);
+      expect(config.collisionCooldownSeconds, 3);
+      expect(config.broadcastThreshold, 5.0);
+    });
+
+    test('fromFile returns defaults for missing file', () {
+      final config = WindowConfig.fromFile('/nonexistent/path/window.toml');
+      expect(config.mainWidth, 424.0);
+      expect(config.bounceHeight, 6.0);
+    });
+
+    test('partial TOML fills missing values with defaults', () {
+      const toml = '''
+[main_window]
+width = 500.0
+''';
+      final config = WindowConfig.fromTomlString(toml);
+      expect(config.mainWidth, 500.0);
+      // All other values should be defaults
+      expect(config.mainHeight, 528.0);
+      expect(config.bounceHeight, 6.0);
+      expect(config.maxChildren, 5);
     });
   });
 }
