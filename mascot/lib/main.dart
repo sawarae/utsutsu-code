@@ -34,19 +34,23 @@ void main(List<String> args) async {
     // Swift awakeFromNib) because window_manager's setTitleBarStyle
     // force-unwraps standardWindowButton(.closeButton) superview.
     windowButtonVisibility: !config.wander,
-    skipTaskbar: false,
+    skipTaskbar: config.wander,
     alwaysOnTop: true,
   );
 
   windowManager.waitUntilReadyToShow(windowOptions, () async {
     await windowManager.setBackgroundColor(Colors.transparent);
 
-    // Hide traffic light buttons in wander mode (macOS)
+    // Hide traffic light buttons / system buttons in wander mode
     // Disable window-level dragging so Flutter GestureDetector handles it
-    if (config.wander && Platform.isMacOS) {
+    if (config.wander) {
       await windowManager.setClosable(false);
       await windowManager.setMinimizable(false);
-      await windowManager.setMovable(false);
+      if (Platform.isMacOS) {
+        await windowManager.setMovable(false);
+      }
+      // On Windows, native drag is disabled via mascot/native_drag channel
+      // in MascotWidget.initState
     }
 
     if (!config.wander) {

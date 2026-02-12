@@ -100,7 +100,7 @@ class _MascotWidgetState extends State<MascotWidget>
     };
     _loadModel();
     // In wander mode, disable native window dragging so Flutter handles it
-    if (_isWander && io.Platform.isMacOS) {
+    if (_isWander) {
       _nativeDragChannel.invokeMethod('setEnabled', false);
     }
     // Push initial opaque regions after first frame renders

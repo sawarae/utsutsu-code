@@ -104,6 +104,28 @@ bool FlutterWindow::OnCreate() {
         }
       });
 
+  // Set up MethodChannel for Dart to enable/disable native drag.
+  // In wander mode, drag is handled by Flutter GestureDetector instead.
+  drag_channel_ = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+      flutter_controller_->engine()->messenger(),
+      "mascot/native_drag",
+      &flutter::StandardMethodCodec::GetInstance());
+
+  drag_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                 result) {
+        if (call.method_name() == "setEnabled") {
+          const auto* enabled = std::get_if<bool>(call.arguments());
+          if (enabled) {
+            drag_enabled_ = *enabled;
+          }
+          result->Success();
+        } else {
+          result->NotImplemented();
+        }
+      });
+
   // Timer to toggle WS_EX_TRANSPARENT on the parent window.
   // When transparent, clicks pass through to other applications.
   // When opaque, WM_NCHITTEST returns HTCAPTION for drag support.
@@ -177,7 +199,9 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     double logical_y = local_y / scale;
 
     if (IsPointInOpaqueRegion(logical_x, logical_y)) {
-      return HTCAPTION;
+      // When native drag is disabled (wander mode), return HTCLIENT so
+      // Flutter GestureDetector receives the mouse events for drag/throw.
+      return drag_enabled_ ? HTCAPTION : HTCLIENT;
     }
     return HTTRANSPARENT;
   }
