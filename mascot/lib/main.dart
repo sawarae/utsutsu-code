@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Directory, File, FileSystemEvent, Platform, Process, ProcessStartMode;
+import 'dart:io' show Directory, File, FileSystemEvent, Platform, Process, ProcessSignal, ProcessStartMode;
 
 import 'package:flutter/material.dart';
 import 'package:screen_retriever/screen_retriever.dart';
@@ -238,6 +238,7 @@ class _MascotAppState extends State<MascotApp> {
   final List<_ChildMascot> _children = [];
   final List<_WanderChild> _wanderChildren = [];
   Timer? _spawnTimer;
+  Timer? _childReaper;
   StreamSubscription<FileSystemEvent>? _spawnWatcher;
   late final String _spawnSignalPath;
   final List<Timer> _ttsTimers = [];
@@ -277,7 +278,26 @@ class _MascotAppState extends State<MascotApp> {
     // Watch for child spawn signals (only in non-wander mode)
     if (!widget.config.wander) {
       _startSpawnWatcher();
+      _startChildReaper();
     }
+  }
+
+  /// Periodically check if wander child processes are still alive.
+  /// Removes dead entries from [_wanderChildren] so new spawns are allowed.
+  void _startChildReaper() {
+    _childReaper = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (_wanderChildren.isEmpty) return;
+      final before = _wanderChildren.length;
+      _wanderChildren.removeWhere((child) {
+        // killPid with SIGCONT is harmless; returns false if process is gone
+        final alive = Process.killPid(child.pid, ProcessSignal.sigcont);
+        return !alive;
+      });
+      if (_wanderChildren.length < before) {
+        _persistChildPids();
+        debugPrint('Reaped dead wander children: ${before - _wanderChildren.length} removed, ${_wanderChildren.length} remaining');
+      }
+    });
   }
 
   /// Use FSEvents (macOS) / inotify (Linux) to watch for spawn_child file
@@ -538,6 +558,7 @@ class _MascotAppState extends State<MascotApp> {
   void dispose() {
     _spawnTimer?.cancel();
     _spawnWatcher?.cancel();
+    _childReaper?.cancel();
     for (final timer in _ttsTimers) {
       timer.cancel();
     }
