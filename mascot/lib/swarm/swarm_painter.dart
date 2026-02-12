@@ -34,7 +34,10 @@ class SwarmPainter extends CustomPainter {
       final e = simulation.entities[i];
       if (e.dismissed) continue;
 
-      final sprite = sprites.getFrame(e.facingLeft, e.isSpeaking, e.emotion);
+      final sprite = sprites.getFrame(
+        e.facingLeft, e.isSpeaking, e.emotion,
+        armState: e.armState,
+      );
       if (sprite == null) continue;
 
       final (sx, sy) = e.squishScale;

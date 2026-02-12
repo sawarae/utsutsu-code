@@ -31,13 +31,19 @@ class SpriteCache {
 
   /// Get a cached sprite frame.
   ///
-  /// Key format: "{emotion}_{facing}_{mouth}".
+  /// Key format: "{emotion}_{arm}_{facing}_{mouth}".
   /// Falls back to idle emotion if the requested emotion is not cached.
-  ui.Image? getFrame(bool facingLeft, bool mouthOpen, String? emotion) {
+  ui.Image? getFrame(
+    bool facingLeft,
+    bool mouthOpen,
+    String? emotion, {
+    String armState = 'luggage',
+  }) {
     final facing = facingLeft ? 'left' : 'right';
     final mouth = mouthOpen ? 'open' : 'closed';
-    final key = '${emotion ?? '_idle'}_${facing}_$mouth';
-    return _cache[key] ?? _cache['_idle_${facing}_$mouth'];
+    final emotionKey = emotion ?? '_idle';
+    final key = '${emotionKey}_${armState}_${facing}_$mouth';
+    return _cache[key] ?? _cache['_idle_${armState}_${facing}_$mouth'];
   }
 
   /// Pre-render all sprite frames from the puppet model.
@@ -92,35 +98,49 @@ class SpriteCache {
       emotions.add(emotionName);
     }
 
+    // Arm state parameter sets
+    const armStates = <String, Map<String, double>>{
+      'luggage': {'Arm_Empty': 0, 'Arm_Broom': 0, 'Arm_Luggage': 1},
+      'broom': {'Arm_Empty': 0, 'Arm_Broom': 1, 'Arm_Luggage': 0},
+      'empty': {'Arm_Empty': 1, 'Arm_Broom': 0, 'Arm_Luggage': 0},
+    };
+
     for (final emotion in emotions) {
-      // Apply default parameters
-      for (final entry in config.defaultParameters.entries) {
-        puppet.setParam(entry.key, entry.value);
-      }
-
-      // Apply emotion (or idle)
-      final emotionName = emotion ?? config.idleEmotion;
-      final emotionParams = config.getEmotionParams(emotionName);
-      if (emotionParams != null) {
-        for (final entry in emotionParams.entries) {
-          puppet.setParam(entry.key, entry.value);
-        }
-      }
-
       final emotionKey = emotion ?? '_idle';
 
-      for (final facingLeft in [true, false]) {
-        for (final mouthOpen in [true, false]) {
-          final mouthValue = mouthOpen
-              ? config.mouthOpenValue
-              : config.getMouthClosedValue(emotion);
-          puppet.setParam(config.mouthParam, mouthValue);
-          pc.updateManual();
+      for (final armEntry in armStates.entries) {
+        // Apply default parameters
+        for (final entry in config.defaultParameters.entries) {
+          puppet.setParam(entry.key, entry.value);
+        }
 
-          final image = _captureFrame(renderer, puppet, facingLeft);
-          final facing = facingLeft ? 'left' : 'right';
-          final mouth = mouthOpen ? 'open' : 'closed';
-          _cache['${emotionKey}_${facing}_$mouth'] = image;
+        // Apply emotion (or idle)
+        final emotionName = emotion ?? config.idleEmotion;
+        final emotionParams = config.getEmotionParams(emotionName);
+        if (emotionParams != null) {
+          for (final entry in emotionParams.entries) {
+            puppet.setParam(entry.key, entry.value);
+          }
+        }
+
+        // Apply arm state
+        for (final armParam in armEntry.value.entries) {
+          puppet.setParam(armParam.key, armParam.value);
+        }
+
+        for (final facingLeft in [true, false]) {
+          for (final mouthOpen in [true, false]) {
+            final mouthValue = mouthOpen
+                ? config.mouthOpenValue
+                : config.getMouthClosedValue(emotion);
+            puppet.setParam(config.mouthParam, mouthValue);
+            pc.updateManual();
+
+            final image = _captureFrame(renderer, puppet, facingLeft);
+            final facing = facingLeft ? 'left' : 'right';
+            final mouth = mouthOpen ? 'open' : 'closed';
+            _cache['${emotionKey}_${armEntry.key}_${facing}_$mouth'] = image;
+          }
         }
       }
     }
