@@ -9,16 +9,18 @@ import 'package:window_manager/window_manager.dart';
 import 'mascot_controller.dart';
 import 'mascot_widget.dart';
 import 'wander_controller.dart';
+import 'window_config.dart';
 
 void main(List<String> args) async {
   final config = _parseArgs(args);
+  final winConfig = WindowConfig.autoDetect();
 
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
 
   // Wander mode uses a smaller window; extra width for outline dilation padding
-  final defaultWidth = config.wander ? 190.0 : 424.0;
-  final defaultHeight = config.wander ? 350.0 : 528.0;
+  final defaultWidth = config.wander ? winConfig.wanderWidth : winConfig.mainWidth;
+  final defaultHeight = config.wander ? winConfig.wanderHeight : winConfig.mainHeight;
   final windowSize =
       Size(config.width ?? defaultWidth, config.height ?? defaultHeight);
   final windowOptions = WindowOptions(
@@ -65,7 +67,7 @@ void main(List<String> args) async {
     await windowManager.show();
   });
 
-  runApp(MascotApp(config: config));
+  runApp(MascotApp(config: config, windowConfig: winConfig));
 }
 
 /// Parsed CLI arguments.
@@ -156,18 +158,16 @@ class _WanderChild {
 
 class MascotApp extends StatefulWidget {
   final _AppConfig config;
+  final WindowConfig windowConfig;
 
-  const MascotApp({super.key, required this.config});
+  const MascotApp({super.key, required this.config, required this.windowConfig});
 
   @override
   State<MascotApp> createState() => _MascotAppState();
 }
 
 class _MascotAppState extends State<MascotApp> {
-  static const _mainWidth = 424.0;
-  static const _childWidth = 264.0;
-  static const _windowHeight = 528.0;
-  static const _maxChildren = 5;
+  WindowConfig get _wc => widget.windowConfig;
 
   late final MascotController _controller;
   WanderController? _wanderController;
@@ -194,6 +194,7 @@ class _MascotAppState extends State<MascotApp> {
         windowWidth: windowW,
         windowHeight: windowH,
         signalDir: widget.config.signalDir,
+        config: widget.windowConfig,
       );
       _wanderController!.start();
     }
@@ -399,8 +400,8 @@ class _MascotAppState extends State<MascotApp> {
   }
 
   void _spawnWanderProcess(String signalDir, String model) {
-    if (_wanderChildren.length >= _maxChildren) {
-      debugPrint('Max wander children reached ($_maxChildren), skipping spawn');
+    if (_wanderChildren.length >= _wc.maxChildren) {
+      debugPrint('Max wander children reached (${_wc.maxChildren}), skipping spawn');
       return;
     }
 
@@ -417,7 +418,7 @@ class _MascotAppState extends State<MascotApp> {
     Process.start(exe, args, mode: ProcessStartMode.detached).then((process) {
       _wanderChildren.add(_WanderChild(pid: process.pid, signalDir: signalDir));
       _persistChildPids();
-      debugPrint('Spawned wander mascot: pid=${process.pid} (${_wanderChildren.length}/$_maxChildren)');
+      debugPrint('Spawned wander mascot: pid=${process.pid} (${_wanderChildren.length}/${_wc.maxChildren})');
     }).catchError((e) {
       debugPrint('Failed to spawn wander mascot: $e');
     });
@@ -434,8 +435,8 @@ class _MascotAppState extends State<MascotApp> {
   }
 
   Future<void> _updateWindowSize() async {
-    final width = _mainWidth + _childWidth * _children.length;
-    await windowManager.setSize(Size(width, _windowHeight));
+    final width = _wc.mainWidth + _wc.childWidth * _children.length;
+    await windowManager.setSize(Size(width, _wc.mainHeight));
   }
 
   @override
@@ -496,8 +497,8 @@ class _MascotAppState extends State<MascotApp> {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           SizedBox(
-            width: _mainWidth,
-            height: _windowHeight,
+            width: _wc.mainWidth,
+            height: _wc.mainHeight,
             child: MascotWidget(
               controller: _controller,
               outlineEnabled: widget.config.outline,
@@ -505,8 +506,8 @@ class _MascotAppState extends State<MascotApp> {
           ),
           for (var i = 0; i < _children.length; i++)
             SizedBox(
-              width: _childWidth,
-              height: _windowHeight,
+              width: _wc.childWidth,
+              height: _wc.mainHeight,
               child: MascotWidget(
                 key: ValueKey(_children[i].signalDir),
                 controller: _children[i].controller,
