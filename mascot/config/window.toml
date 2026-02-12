@@ -11,8 +11,8 @@ height = 528.0
 max_children = 2
 
 [wander_window]
-width = 190.0
-height = 350.0
+width = 152.0
+height = 280.0
 
 [wander.physics]
 gravity = 0.8

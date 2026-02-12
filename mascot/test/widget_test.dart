@@ -979,8 +979,8 @@ void main() {
       expect(config.mainHeight, 528.0);
       expect(config.childWidth, 264.0);
       expect(config.maxChildren, 2);
-      expect(config.wanderWidth, 190.0);
-      expect(config.wanderHeight, 350.0);
+      expect(config.wanderWidth, 152.0);
+      expect(config.wanderHeight, 280.0);
       expect(config.gravity, 0.8);
       expect(config.bouncePeriodMs, 600);
       expect(config.bounceHeight, 6.0);

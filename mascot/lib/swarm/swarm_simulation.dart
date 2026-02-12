@@ -18,6 +18,7 @@ class SwarmSimulation extends ChangeNotifier {
   final double entityWidth;
   final double entityHeight;
   final bool collisionEnabled;
+  final double bottomMargin;
 
   late final Ticker _ticker;
   late final CollisionGrid _grid;
@@ -35,6 +36,7 @@ class SwarmSimulation extends ChangeNotifier {
     required this.entityWidth,
     required this.entityHeight,
     this.collisionEnabled = true,
+    this.bottomMargin = 0,
   }) {
     _grid = CollisionGrid(
       cellSize: entityWidth,
@@ -81,7 +83,7 @@ class SwarmSimulation extends ChangeNotifier {
     // Skip if frame took too long (e.g., app was backgrounded)
     if (dt.inMilliseconds > 100) return;
 
-    final bottomY = screenHeight - entityHeight + config.bottomMargin;
+    final bottomY = screenHeight - entityHeight + bottomMargin;
 
     // 1. Update all entity positions
     for (final e in entities) {
