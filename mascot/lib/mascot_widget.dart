@@ -300,6 +300,12 @@ class _MascotWidgetState extends State<MascotWidget>
 
   @override
   Widget build(BuildContext context) {
+    if (!_modelLoaded) {
+      return const ColoredBox(
+        color: Colors.transparent,
+        child: SizedBox.expand(),
+      );
+    }
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: AnimatedBuilder(
