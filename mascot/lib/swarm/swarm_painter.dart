@@ -25,14 +25,16 @@ class SwarmPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (!sprites.isReady) return;
 
-    final paint = Paint();
+    // Paint with high-quality filtering for downscaled 2x sprites
+    final paint = Paint()..filterQuality = FilterQuality.low;
+    final dstSize = ui.Size(sprites.spriteWidth, sprites.spriteHeight);
 
     for (var i = 0; i < simulation.entities.length; i++) {
       if (i == activeEntityIndex) continue;
       final e = simulation.entities[i];
       if (e.dismissed) continue;
 
-      final sprite = sprites.getFrame(e.facingLeft, e.isSpeaking);
+      final sprite = sprites.getFrame(e.facingLeft, e.isSpeaking, e.emotion);
       if (sprite == null) continue;
 
       final (sx, sy) = e.squishScale;
@@ -42,12 +44,18 @@ class SwarmPainter extends CustomPainter {
 
       // Apply squish from bottom center
       if (sx != 1.0 || sy != 1.0) {
-        canvas.translate(sprites.spriteWidth / 2, sprites.spriteHeight);
+        canvas.translate(dstSize.width / 2, dstSize.height);
         canvas.scale(sx, sy);
-        canvas.translate(-sprites.spriteWidth / 2, -sprites.spriteHeight);
+        canvas.translate(-dstSize.width / 2, -dstSize.height);
       }
 
-      canvas.drawImage(sprite, Offset.zero, paint);
+      // Draw 2x sprite scaled down to logical size
+      final src = Rect.fromLTWH(
+        0, 0,
+        sprite.width.toDouble(), sprite.height.toDouble(),
+      );
+      final dst = Rect.fromLTWH(0, 0, dstSize.width, dstSize.height);
+      canvas.drawImageRect(sprite, src, dst, paint);
       canvas.restore();
 
       // Draw speech bubble if speaking
@@ -87,19 +95,14 @@ class SwarmPainter extends CustomPainter {
       const Radius.circular(8),
     );
 
-    // Background
-    canvas.drawRRect(
-      bubbleRect,
-      Paint()..color = Colors.white,
-    );
     // Shadow
     canvas.drawRRect(
-      bubbleRect,
+      bubbleRect.shift(const Offset(1, 2)),
       Paint()
         ..color = Colors.black26
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
     );
-    // Background again (over shadow)
+    // Background
     canvas.drawRRect(
       bubbleRect,
       Paint()..color = Colors.white,
