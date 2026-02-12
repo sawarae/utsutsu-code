@@ -17,6 +17,13 @@ def main():
     if data.get("tool_name") != "Task":
         return
 
+    # Skip TTS injection for lightweight agent types
+    tool_input = data.get("tool_input", {})
+    agent_type = tool_input.get("subagent_type", "")
+    model = tool_input.get("model", "")
+    if agent_type in ("haiku", "Explore") or model == "haiku":
+        return
+
     # Check if mascot app is running
     try:
         import subprocess
@@ -29,7 +36,7 @@ def main():
     except Exception:
         return
 
-    prompt = data.get("tool_input", {}).get("prompt", "")
+    prompt = tool_input.get("prompt", "")
 
     parent_dir = os.path.expanduser("~/.claude/utsutsu-code")
     task_id = uuid.uuid4().hex[:8]
@@ -40,17 +47,12 @@ def main():
     with open(spawn_signal, "w", encoding="utf-8") as f:
         json.dump({"task_id": task_id}, f)
 
-    # Inject --signal-dir into the prompt
+    # Inject --signal-dir into the prompt (compact to reduce token overhead)
     inject = (
-        "\n\n---\n"
-        "IMPORTANT: A dedicated mascot has been spawned for this task.\n"
-        "Use this TTS command to communicate with your mascot:\n"
-        f"  python3 ~/.claude/hooks/mascot_tts.py --signal-dir {signal_dir}"
-        ' --emotion KEY "message(30文字以内)"\n'
-        "Emotion keys: Gentle(穏やか), Joy(喜び), Blush(照れ), "
-        "Trouble(困惑), Singing(ノリノリ)\n"
-        "Call TTS at task start (Gentle) and completion (Joy/Trouble).\n"
-        "Do NOT use the default TTS command without --signal-dir."
+        f"\n\n---\nMascot TTS: `python3 ~/.claude/hooks/mascot_tts.py"
+        f" --signal-dir {signal_dir}"
+        ' --emotion KEY "msg"`\n'
+        "Keys: Gentle/Joy/Trouble. Call at start+end. 30字以内、日本語で。"
     )
 
     new_prompt = prompt + inject

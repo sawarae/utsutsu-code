@@ -464,6 +464,7 @@ def main():
     dismiss = False
     spawn = False
     spawn_model = None
+    quiet = False
     argv = sys.argv[1:]
     filtered = []
     i = 0
@@ -483,6 +484,9 @@ def main():
         elif argv[i] == "--spawn-model" and i + 1 < len(argv):
             spawn_model = argv[i + 1]
             i += 2
+        elif argv[i] == "--quiet":
+            quiet = True
+            i += 1
         else:
             filtered.append(argv[i])
             i += 1
@@ -533,6 +537,8 @@ def main():
     logging.info("TTS fired: message=%s emotion=%s", message, emotion)
 
     config = load_config()
+    if quiet:
+        config.setdefault("engine", "coeiroink")  # skip auto-detect
     result = {"status": "unknown"}
     muted = is_muted()
 
