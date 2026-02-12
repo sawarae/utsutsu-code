@@ -85,7 +85,7 @@ class WindowConfig {
     this.collisionCooldownSeconds = 5,
     this.broadcastThreshold = 10.0,
     this.swarmThreshold = 5,
-    this.lod0TimeoutMs = 3000,
+    this.lod0TimeoutMs = 6000,
     this.signalPollMs = 200,
     this.clickThroughInterval = 0.05,
   });
@@ -172,7 +172,7 @@ class WindowConfig {
       collisionCooldownSeconds: _i(collision['cooldown_seconds']) ?? 5,
       broadcastThreshold: _d(collision['broadcast_threshold']) ?? 10.0,
       swarmThreshold: _i(swarm['swarm_threshold']) ?? 5,
-      lod0TimeoutMs: _i(swarm['lod0_timeout_ms']) ?? 3000,
+      lod0TimeoutMs: _i(swarm['lod0_timeout_ms']) ?? 6000,
       signalPollMs: _i(swarm['signal_poll_ms']) ?? 200,
       clickThroughInterval: _d(swarm['click_through_interval']) ?? 0.05,
     );

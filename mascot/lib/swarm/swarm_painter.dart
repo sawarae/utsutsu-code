@@ -25,8 +25,8 @@ class SwarmPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (!sprites.isReady) return;
 
-    // Paint with high-quality filtering for downscaled 2x sprites
-    final paint = Paint()..filterQuality = FilterQuality.low;
+    // Paint with medium filtering for downscaled 2x sprites
+    final paint = Paint()..filterQuality = FilterQuality.medium;
     final dstSize = ui.Size(sprites.spriteWidth, sprites.spriteHeight);
 
     for (var i = 0; i < simulation.entities.length; i++) {

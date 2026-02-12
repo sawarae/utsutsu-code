@@ -230,7 +230,7 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
       } catch (_) {
         return;
       }
-      final clearTimer = Timer(const Duration(seconds: 2), () {
+      final clearTimer = Timer(const Duration(seconds: 5), () {
         try {
           speakingFile.deleteSync();
         } catch (_) {}
@@ -255,6 +255,7 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
       modelsDir: widget.modelsDir,
       model: widget.model ?? 'blend_shape_mini',
       pollIntervalMs: 100,
+      mouthAnimationMs: 250,
     );
 
     // Apply entity's wander overrides
