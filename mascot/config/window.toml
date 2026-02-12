@@ -49,6 +49,7 @@ swarm_threshold = 0
 lod0_timeout_ms = 6000
 signal_poll_ms = 200
 click_through_interval = 0.05
-# Negative = entities render higher (swarm draws inside fullscreen overlay,
-# unlike wander mode where OS windows extend below screen edge)
-bottom_margin = 0
+# Positive = entities render lower (compensates for transparent padding
+# below feet in the sprite; wander mode hides this by extending the
+# OS window below screen edge, but the swarm overlay cannot)
+bottom_margin = 100
