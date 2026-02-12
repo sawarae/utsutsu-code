@@ -17,7 +17,7 @@ void main(List<String> args) async {
   await windowManager.ensureInitialized();
 
   // Wander mode uses a smaller window; extra width for outline dilation
-  final defaultWidth = config.wander ? 164.0 : 424.0;
+  final defaultWidth = config.wander ? 174.0 : 424.0;
   final defaultHeight = config.wander ? 350.0 : 528.0;
   final windowSize =
       Size(config.width ?? defaultWidth, config.height ?? defaultHeight);
@@ -49,7 +49,11 @@ void main(List<String> args) async {
       await windowManager.setMovable(false);
     }
 
-    if (!config.wander) {
+    if (config.wander) {
+      // Place off-screen before show() so the window isn't visible until
+      // WanderController.start() begins the drop animation.
+      await windowManager.setPosition(Offset(0, -windowSize.height * 2));
+    } else {
       // Position at bottom of screen (default: left edge)
       final primaryDisplay = await screenRetriever.getPrimaryDisplay();
       final screenSize = primaryDisplay.size;
@@ -57,7 +61,6 @@ void main(List<String> args) async {
       final y = screenSize.height - windowSize.height;
       await windowManager.setPosition(Offset(x, y));
     }
-    // Wander mode: WanderController handles positioning
 
     await windowManager.show();
   });

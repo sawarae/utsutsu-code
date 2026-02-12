@@ -37,6 +37,9 @@ class WanderController extends ChangeNotifier {
   Timer? _decelerationTimer;
   double _speedMultiplier = 1.0;
 
+  // --- Drop entrance ---
+  Timer? _dropTimer;
+
   // --- Drag state ---
   bool _isDragging = false;
   double _velocityX = 0;
@@ -137,28 +140,75 @@ class WanderController extends ChangeNotifier {
     _x = _rng.nextDouble() * (_screenWidth - windowWidth);
     _facingLeft = _rng.nextBool();
 
-    // Position the window at the bottom of the screen
-    const bottomMargin = 50;
-    _y = display.size.height - windowHeight + bottomMargin;
+    // Start above the screen and drop down
+    _y = -windowHeight;
+    _isPaused = true;
     await windowManager.setPosition(Offset(_x, _y));
 
-    // Start movement timer (~30fps)
-    _moveTimer = Timer.periodic(
-      const Duration(milliseconds: 33),
-      (_) => _tick(),
-    );
+    // Drop entrance: gravity pulls the mascot to the bottom
+    _startDrop();
 
-    // Start bounce animation
-    _bounceTicker.start();
-
-    // Schedule first direction reversal
-    _scheduleReverse();
-
-    // Schedule first sparkle
+    // Schedule sparkle and arm switch immediately (visual-only, no movement)
     _scheduleSparkle();
-
-    // Schedule first arm switch
     _scheduleArmSwitch();
+  }
+
+  /// Animate the mascot falling from the top of the screen with gravity
+  /// and a small bounce on landing, then start normal wandering.
+  void _startDrop() {
+    double velY = 0;
+    // Random horizontal drift: -3.0 to +3.0 px/tick, matching facing direction
+    double velX = (_rng.nextDouble() - 0.5) * 6.0;
+    _facingLeft = velX < 0;
+    const gravity = 0.8;
+    const bounceDamping = 0.4;
+    const friction = 0.98;
+    const bottomMargin = 50.0;
+    final bottomY = _screenHeight - windowHeight + bottomMargin;
+    var bounceCount = 0;
+
+    _dropTimer = Timer.periodic(const Duration(milliseconds: 33), (timer) {
+      velY += gravity;
+      velX *= friction;
+      _x += velX;
+      _y += velY;
+
+      // Bounce off horizontal edges
+      if (_x <= 0) {
+        _x = 0;
+        velX = -velX * 0.5;
+      } else if (_x >= _screenWidth - windowWidth) {
+        _x = _screenWidth - windowWidth;
+        velX = -velX * 0.5;
+      }
+
+      if (_y >= bottomY) {
+        _y = bottomY;
+        velY = -velY * bounceDamping;
+        bounceCount++;
+
+        // Stop after 3 bounces or negligible velocity
+        if (bounceCount >= 3 || velY.abs() < 1.0) {
+          timer.cancel();
+          _dropTimer = null;
+          _y = bottomY;
+          _isPaused = false;
+
+          // Start normal wandering
+          _bounceTicker.start();
+          _moveTimer = Timer.periodic(
+            const Duration(milliseconds: 33),
+            (_) => _tick(),
+          );
+          _scheduleReverse();
+          notifyListeners();
+          return;
+        }
+      }
+
+      _updateWindowPosition();
+      notifyListeners();
+    });
   }
 
   double _randomSpeed() {
@@ -293,6 +343,7 @@ class WanderController extends ChangeNotifier {
   void startDrag() {
     _isDragging = true;
     _dragSamples.clear();
+    _dropTimer?.cancel();
     _moveTimer?.cancel();
     _reverseTimer?.cancel();
     _pauseTimer?.cancel();
@@ -499,6 +550,7 @@ class WanderController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _dropTimer?.cancel();
     _moveTimer?.cancel();
     _reverseTimer?.cancel();
     _pauseTimer?.cancel();
