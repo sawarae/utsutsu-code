@@ -27,6 +27,23 @@ class MainFlutterWindow: NSWindow {
     self.styleMask.insert(.fullSizeContentView)
     self.isMovableByWindowBackground = false
 
+    // Start fully transparent to prevent yellow flash before Flutter renders
+    self.alphaValue = 0
+
+    // Method channel for Flutter to signal readiness
+    let readyChannel = FlutterMethodChannel(
+      name: "mascot/window_ready",
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
+    readyChannel.setMethodCallHandler { [weak self] call, result in
+      if call.method == "show" {
+        self?.alphaValue = 1
+        result(nil)
+      } else {
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
     // Method channel to toggle native drag from Flutter
     let channel = FlutterMethodChannel(
       name: "mascot/native_drag",
