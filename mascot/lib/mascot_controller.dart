@@ -25,6 +25,8 @@ class MascotController extends ChangeNotifier {
 
   late final Map<String, double> _parameters;
 
+  final int _pollIntervalMs;
+  final int _mouthAnimationMs;
   Timer? _pollTimer;
   Timer? _animTimer;
 
@@ -41,14 +43,23 @@ class MascotController extends ChangeNotifier {
   bool get isSpeaking => _isSpeaking;
   bool get isListening => _isListening;
 
-  MascotController({String? signalDir, String? modelsDir, String? model})
-      : this._fromDir(signalDir ?? _defaultSignalDir(),
-            modelsDir: modelsDir, model: model);
+  MascotController({
+    String? signalDir,
+    String? modelsDir,
+    String? model,
+    int pollIntervalMs = 100,
+    int mouthAnimationMs = 150,
+  }) : this._fromDir(signalDir ?? _defaultSignalDir(),
+            modelsDir: modelsDir, model: model, pollIntervalMs: pollIntervalMs,
+            mouthAnimationMs: mouthAnimationMs);
 
-  MascotController._fromDir(String dir, {String? modelsDir, String? model})
+  MascotController._fromDir(String dir, {String? modelsDir, String? model,
+      int pollIntervalMs = 100, int mouthAnimationMs = 150})
       : _signalPath = '$dir/mascot_speaking',
         _listeningPath = '$dir/mascot_listening',
-        _dismissPath = '$dir/mascot_dismiss' {
+        _dismissPath = '$dir/mascot_dismiss',
+        _pollIntervalMs = pollIntervalMs,
+        _mouthAnimationMs = mouthAnimationMs {
     _modelConfig = ModelConfig.fromEnvironment(
       modelsDir: modelsDir,
       model: model,
@@ -59,9 +70,11 @@ class MascotController extends ChangeNotifier {
   }
 
   @visibleForTesting
-  MascotController.withConfig(this._signalPath, ModelConfig config)
+  MascotController.withConfig(this._signalPath, ModelConfig config, {int pollIntervalMs = 100})
       : _listeningPath = '${File(_signalPath).parent.path}/mascot_listening',
-        _dismissPath = '${File(_signalPath).parent.path}/mascot_dismiss' {
+        _dismissPath = '${File(_signalPath).parent.path}/mascot_dismiss',
+        _pollIntervalMs = pollIntervalMs,
+        _mouthAnimationMs = 150 {
     _modelConfig = config;
     _parameters = Map<String, double>.from(_modelConfig.defaultParameters);
     _setEmotion(null); // Apply idle emotion
@@ -81,7 +94,7 @@ class MascotController extends ChangeNotifier {
 
   void _startPolling() {
     _pollTimer = Timer.periodic(
-      const Duration(milliseconds: 100),
+      Duration(milliseconds: _pollIntervalMs),
       (_) => _checkSignalFile(),
     );
   }
@@ -198,7 +211,7 @@ class MascotController extends ChangeNotifier {
   void _startMouthAnimation() {
     _animTimer?.cancel();
     _animTimer = Timer.periodic(
-      const Duration(milliseconds: 150),
+      Duration(milliseconds: _mouthAnimationMs),
       (_) {
         final current = _parameters[_modelConfig.mouthParam]!;
         final closedValue = _modelConfig.getMouthClosedValue(_currentEmotion);

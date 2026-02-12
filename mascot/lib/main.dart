@@ -8,6 +8,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'mascot_controller.dart';
 import 'mascot_widget.dart';
+import 'swarm/swarm_app.dart';
 import 'wander_controller.dart';
 import 'window_config.dart';
 
@@ -17,6 +18,51 @@ void main(List<String> args) async {
 
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
+
+  // Swarm mode: fullscreen transparent overlay
+  if (config.swarm) {
+    final primaryDisplay = await screenRetriever.getPrimaryDisplay();
+    final screenSize = primaryDisplay.size;
+
+    final windowOptions = WindowOptions(
+      size: screenSize,
+      backgroundColor: Colors.transparent,
+      titleBarStyle: TitleBarStyle.hidden,
+      windowButtonVisibility: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+    );
+
+    windowManager.waitUntilReadyToShow(windowOptions, () async {
+      await windowManager.setBackgroundColor(Colors.transparent);
+      if (Platform.isMacOS) {
+        await windowManager.setClosable(false);
+        await windowManager.setMinimizable(false);
+        await windowManager.setMovable(false);
+      }
+      await windowManager.setSize(screenSize);
+      await windowManager.setPosition(Offset.zero);
+      await windowManager.show();
+    });
+
+    runApp(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        scaffoldBackgroundColor: Colors.transparent,
+        canvasColor: Colors.transparent,
+      ),
+      home: SwarmApp(
+        signalDir: config.signalDir ?? _defaultSignalDir(),
+        config: winConfig,
+        collisionEnabled: config.collision,
+        modelsDir: config.modelsDir,
+        model: config.model,
+        screenWidth: screenSize.width,
+        screenHeight: screenSize.height,
+      ),
+    ));
+    return;
+  }
 
   // Wander mode uses a smaller window; extra width for outline dilation padding
   final defaultWidth = config.wander ? winConfig.wanderWidth : winConfig.mainWidth;
@@ -70,6 +116,12 @@ void main(List<String> args) async {
   runApp(MascotApp(config: config, windowConfig: winConfig));
 }
 
+String _defaultSignalDir() {
+  final home =
+      Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
+  return '$home/.claude/utsutsu-code';
+}
+
 /// Parsed CLI arguments.
 class _AppConfig {
   final String? modelsDir;
@@ -80,6 +132,8 @@ class _AppConfig {
   final double? height;
   final bool wander;
   final bool outline;
+  final bool swarm;
+  final bool collision;
 
   const _AppConfig({
     this.modelsDir,
@@ -90,6 +144,8 @@ class _AppConfig {
     this.height,
     this.wander = false,
     this.outline = true,
+    this.swarm = false,
+    this.collision = true,
   });
 }
 
@@ -103,6 +159,8 @@ _AppConfig _parseArgs(List<String> args) {
   double? height;
   bool wander = false;
   bool outline = true;
+  bool swarm = false;
+  bool collision = true;
 
   for (var i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -126,6 +184,10 @@ _AppConfig _parseArgs(List<String> args) {
         outline = true;
       case '--no-outline':
         outline = false;
+      case '--swarm':
+        swarm = true;
+      case '--no-collision':
+        collision = false;
     }
   }
 
@@ -138,6 +200,8 @@ _AppConfig _parseArgs(List<String> args) {
     height: height,
     wander: wander,
     outline: outline,
+    swarm: swarm,
+    collision: collision,
   );
 }
 
@@ -177,6 +241,7 @@ class _MascotAppState extends State<MascotApp> {
   StreamSubscription<FileSystemEvent>? _spawnWatcher;
   late final String _spawnSignalPath;
   final List<Timer> _ttsTimers = [];
+  _WanderChild? _swarmOverlay; // Single swarm overlay process
 
   @override
   void initState() {
@@ -185,6 +250,7 @@ class _MascotAppState extends State<MascotApp> {
       signalDir: widget.config.signalDir,
       modelsDir: widget.config.modelsDir,
       model: widget.config.model,
+      pollIntervalMs: widget.config.wander ? 500 : 100,
     );
 
     if (widget.config.wander) {
@@ -340,7 +406,16 @@ class _MascotAppState extends State<MascotApp> {
     final file = File(_spawnSignalPath);
     if (!file.existsSync()) return;
 
-    // Atomically claim the signal file to prevent race conditions
+    // In swarm mode, don't consume the signal — just ensure the overlay
+    // is running and let it handle all spawn signals directly.
+    if (_wc.maxChildren > _wc.swarmThreshold) {
+      if (_swarmOverlay == null) {
+        _launchSwarmOverlay('blend_shape_mini');
+      }
+      return;
+    }
+
+    // Non-swarm mode: atomically claim the signal file
     final claimedPath = '${_spawnSignalPath}_processing';
     try {
       file.renameSync(claimedPath);
@@ -370,10 +445,7 @@ class _MascotAppState extends State<MascotApp> {
       final dismissFile = File('$signalDir/mascot_dismiss');
       if (dismissFile.existsSync()) dismissFile.deleteSync();
 
-      // Parent decides model and wander policy
       _spawnWanderProcess(signalDir, 'blend_shape_mini');
-
-      // Parent sends delayed TTS (moved from hook's sleep 2 && TTS)
       _sendDelayedTts(signalDir);
     } catch (e) {
       debugPrint('Failed to spawn child mascot: $e');
@@ -402,6 +474,25 @@ class _MascotAppState extends State<MascotApp> {
     _ttsTimers.add(writeTimer);
   }
 
+  void _launchSwarmOverlay(String model) {
+    final exe = Platform.resolvedExecutable;
+    final parentDir = widget.config.signalDir ?? _defaultSignalDir();
+    final args = [
+      '--swarm',
+      '--signal-dir', parentDir,
+      '--model', model,
+    ];
+    if (widget.config.modelsDir != null) {
+      args.addAll(['--models-dir', widget.config.modelsDir!]);
+    }
+    Process.start(exe, args, mode: ProcessStartMode.detached).then((process) {
+      _swarmOverlay = _WanderChild(pid: process.pid, signalDir: parentDir);
+      debugPrint('Launched swarm overlay: pid=${process.pid}');
+    }).catchError((e) {
+      debugPrint('Failed to launch swarm overlay: $e');
+    });
+  }
+
   void _spawnWanderProcess(String signalDir, String model) {
     if (_wanderChildren.length >= _wc.maxChildren) {
       debugPrint('Max wander children reached (${_wc.maxChildren}), skipping spawn');
@@ -411,6 +502,7 @@ class _MascotAppState extends State<MascotApp> {
     final exe = Platform.resolvedExecutable;
     final args = [
       '--wander',
+      '--no-outline',
       '--signal-dir', signalDir,
       '--model', model,
     ];
@@ -450,6 +542,13 @@ class _MascotAppState extends State<MascotApp> {
       timer.cancel();
     }
     _ttsTimers.clear();
+    // Kill swarm overlay process
+    if (_swarmOverlay != null) {
+      try {
+        Process.killPid(_swarmOverlay!.pid);
+      } catch (_) {}
+      _swarmOverlay = null;
+    }
     // Dismiss and kill all wander child processes
     for (final child in _wanderChildren) {
       try {

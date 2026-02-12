@@ -11,8 +11,8 @@ height = 528.0
 max_children = 2
 
 [wander_window]
-width = 190.0
-height = 350.0
+width = 152.0
+height = 280.0
 
 [wander.physics]
 gravity = 0.8
@@ -39,6 +39,17 @@ arm_delay_min_ms = 15000
 arm_delay_max_ms = 45000
 
 [wander.collision]
-check_interval = 6
+check_interval = 18
 cooldown_seconds = 5
-broadcast_threshold = 2.0
+broadcast_threshold = 10.0
+
+[swarm]
+# Swarm overlay is used when max_children > swarm_threshold
+swarm_threshold = 0
+lod0_timeout_ms = 6000
+signal_poll_ms = 200
+click_through_interval = 0.05
+# Positive = entities render lower (compensates for transparent padding
+# below feet in the sprite; wander mode hides this by extending the
+# OS window below screen edge, but the swarm overlay cannot)
+bottom_margin = 50

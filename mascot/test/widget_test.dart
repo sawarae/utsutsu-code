@@ -979,17 +979,17 @@ void main() {
       expect(config.mainHeight, 528.0);
       expect(config.childWidth, 264.0);
       expect(config.maxChildren, 2);
-      expect(config.wanderWidth, 190.0);
-      expect(config.wanderHeight, 350.0);
+      expect(config.wanderWidth, 152.0);
+      expect(config.wanderHeight, 280.0);
       expect(config.gravity, 0.8);
       expect(config.bouncePeriodMs, 600);
       expect(config.bounceHeight, 6.0);
       expect(config.squishAmount, 0.03);
       expect(config.speedMin, 0.4);
       expect(config.speedMax, 1.2);
-      expect(config.collisionCheckInterval, 6);
+      expect(config.collisionCheckInterval, 18);
       expect(config.collisionCooldownSeconds, 5);
-      expect(config.broadcastThreshold, 2.0);
+      expect(config.broadcastThreshold, 10.0);
     });
 
     test('fromTomlString parses all sections', () {
