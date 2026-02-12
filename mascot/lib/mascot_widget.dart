@@ -366,7 +366,15 @@ class _MascotWidgetState extends State<MascotWidget>
                           onPanEnd: _isWander
                               ? (details) => _wander!.endDrag()
                               : null,
-                          child: _buildWanderWrapper(child: _buildCharacter()),
+                          child: _buildWanderWrapper(
+                            child: _isWander
+                                ? Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8),
+                                    child: _buildCharacter(),
+                                  )
+                                : _buildCharacter(),
+                          ),
                         ),
                       ),
                     ),

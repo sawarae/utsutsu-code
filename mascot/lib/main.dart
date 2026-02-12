@@ -16,8 +16,8 @@ void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
 
-  // Wander mode uses a smaller window; extra width for outline dilation
-  final defaultWidth = config.wander ? 174.0 : 424.0;
+  // Wander mode uses a smaller window; extra width for outline dilation padding
+  final defaultWidth = config.wander ? 190.0 : 424.0;
   final defaultHeight = config.wander ? 350.0 : 528.0;
   final windowSize =
       Size(config.width ?? defaultWidth, config.height ?? defaultHeight);
