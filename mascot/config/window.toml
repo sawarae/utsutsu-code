@@ -8,7 +8,7 @@ height = 528.0
 [child_window]
 width = 264.0
 height = 528.0
-max_children = 5
+max_children = 2
 
 [wander_window]
 width = 190.0
