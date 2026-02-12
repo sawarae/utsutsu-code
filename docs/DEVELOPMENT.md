@@ -75,6 +75,7 @@ mascot/
     mascot_controller.dart # シグナルファイルポーリング、感情状態、口パクアニメーション
     model_config.dart      # TOMLベースのモデル設定
     toml_parser.dart       # 軽量TOMLパーサー
+    swarm/                 # スウォームオーバーレイ（→ docs/SWARM.md）
   config/
     emotions.toml          # 感情キー定義・フレーズ・俳句プロンプト
     examples/              # モデルタイプ別の感情設定例
