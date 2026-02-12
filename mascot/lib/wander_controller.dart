@@ -138,7 +138,8 @@ class WanderController extends ChangeNotifier {
     _facingLeft = _rng.nextBool();
 
     // Position the window at the bottom of the screen
-    _y = display.size.height - windowHeight;
+    const bottomMargin = 50;
+    _y = display.size.height - windowHeight + bottomMargin;
     await windowManager.setPosition(Offset(_x, _y));
 
     // Start movement timer (~30fps)
@@ -225,7 +226,9 @@ class WanderController extends ChangeNotifier {
     // Phase 1: Decelerate over ~200ms (6 steps × 33ms)
     const steps = 6;
     var step = 0;
-    _decelerationTimer = Timer.periodic(const Duration(milliseconds: 33), (timer) {
+    _decelerationTimer = Timer.periodic(const Duration(milliseconds: 33), (
+      timer,
+    ) {
       step++;
       _speedMultiplier = (1.0 - step / steps).clamp(0.0, 1.0);
       notifyListeners();
@@ -243,16 +246,19 @@ class WanderController extends ChangeNotifier {
 
           // Phase 3: Accelerate over ~200ms
           var accelStep = 0;
-          _decelerationTimer = Timer.periodic(const Duration(milliseconds: 33), (timer) {
-            accelStep++;
-            _speedMultiplier = (accelStep / steps).clamp(0.0, 1.0);
-            notifyListeners();
-            if (accelStep >= steps) {
-              timer.cancel();
-              _speedMultiplier = 1.0;
+          _decelerationTimer = Timer.periodic(
+            const Duration(milliseconds: 33),
+            (timer) {
+              accelStep++;
+              _speedMultiplier = (accelStep / steps).clamp(0.0, 1.0);
               notifyListeners();
-            }
-          });
+              if (accelStep >= steps) {
+                timer.cancel();
+                _speedMultiplier = 1.0;
+                notifyListeners();
+              }
+            },
+          );
 
           notifyListeners();
           _scheduleReverse();
@@ -377,7 +383,9 @@ class WanderController extends ChangeNotifier {
       notifyListeners();
 
       // Stop when velocity is negligible and at bottom
-      if (_velocityX.abs() < 0.1 && _velocityY.abs() < 0.1 && (_y - bottomY).abs() < 1) {
+      if (_velocityX.abs() < 0.1 &&
+          _velocityY.abs() < 0.1 &&
+          (_y - bottomY).abs() < 1) {
         timer.cancel();
         _y = bottomY;
         _isPaused = false;
@@ -432,13 +440,21 @@ class WanderController extends ChangeNotifier {
   }
 
   /// Resolve collision with another mascot window (AABB).
-  bool resolveCollision(double otherX, double otherY, double otherW, double otherH) {
+  bool resolveCollision(
+    double otherX,
+    double otherY,
+    double otherW,
+    double otherH,
+  ) {
     final myRight = _x + windowWidth;
     final myBottom = _y + windowHeight;
     final otherRight = otherX + otherW;
     final otherBottom = otherY + otherH;
 
-    if (_x < otherRight && myRight > otherX && _y < otherBottom && myBottom > otherY) {
+    if (_x < otherRight &&
+        myRight > otherX &&
+        _y < otherBottom &&
+        myBottom > otherY) {
       final overlapLeft = myRight - otherX;
       final overlapRight = otherRight - _x;
 
