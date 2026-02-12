@@ -68,6 +68,7 @@ class WanderController extends ChangeNotifier {
   static const _collisionCheckInterval = 6; // every ~200ms at 30fps
   DateTime? _lastCollisionTime;
   static const _collisionCooldown = Duration(seconds: 5);
+  bool _writingPosition = false;
 
   /// Called when a collision occurs (after cooldown).
   VoidCallback? onCollision;
@@ -457,12 +458,12 @@ class WanderController extends ChangeNotifier {
   /// Write this mascot's position to a signal file for siblings to read.
   void _broadcastPosition() {
     final dir = signalDir;
-    if (dir == null) return;
-    try {
-      File('$dir/mascot_position').writeAsStringSync(
-        '{"x":$_x,"y":$_y,"w":$windowWidth,"h":$windowHeight}',
-      );
-    } catch (_) {}
+    if (dir == null || _writingPosition) return;
+    _writingPosition = true;
+    File('$dir/mascot_position')
+        .writeAsString('{"x":$_x,"y":$_y,"w":$windowWidth,"h":$windowHeight}')
+        .then((_) => _writingPosition = false)
+        .catchError((_) { _writingPosition = false; return File(''); });
   }
 
   /// Scan sibling signal directories for position files and resolve collisions.
@@ -476,16 +477,17 @@ class WanderController extends ChangeNotifier {
         if (entity.path == dir) continue;
         final posFile = File('${entity.path}/mascot_position');
         if (!posFile.existsSync()) continue;
-        try {
-          final data =
-              jsonDecode(posFile.readAsStringSync()) as Map<String, dynamic>;
-          resolveCollision(
-            (data['x'] as num).toDouble(),
-            (data['y'] as num).toDouble(),
-            (data['w'] as num?)?.toDouble() ?? 150,
-            (data['h'] as num?)?.toDouble() ?? 350,
-          );
-        } catch (_) {}
+        posFile.readAsString().then((content) {
+          try {
+            final data = jsonDecode(content) as Map<String, dynamic>;
+            resolveCollision(
+              (data['x'] as num).toDouble(),
+              (data['y'] as num).toDouble(),
+              (data['w'] as num?)?.toDouble() ?? 150,
+              (data['h'] as num?)?.toDouble() ?? 350,
+            );
+          } catch (_) {}
+        }).catchError((_) {});
       }
     } catch (_) {}
   }

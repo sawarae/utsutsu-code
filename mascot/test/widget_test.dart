@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' show Offset;
@@ -745,6 +746,42 @@ void main() {
     test('resolveCollision works without onCollision callback set', () {
       final collided = wander.resolveCollision(100, 0, 150, 350);
       expect(collided, true);
+    });
+  });
+
+  // ── TTS Timer Cancellation Tests (#41) ─────────────────────
+
+  group('TTS timer cancellation', () {
+    test('Timer instances can be cancelled before firing', () {
+      final timers = <Timer>[];
+      var firedCount = 0;
+
+      // Simulate _sendDelayedTts creating timers
+      final writeTimer = Timer(const Duration(seconds: 2), () {
+        firedCount++;
+      });
+      timers.add(writeTimer);
+
+      // Cancel all timers (simulates dispose)
+      for (final timer in timers) {
+        timer.cancel();
+      }
+      timers.clear();
+
+      expect(firedCount, 0, reason: 'Timer should not fire after cancellation');
+    });
+
+    test('Cancelling already-fired timer is safe', () async {
+      var fired = false;
+      final timer = Timer(const Duration(milliseconds: 10), () {
+        fired = true;
+      });
+
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(fired, true);
+
+      // Cancelling after fire should not throw
+      timer.cancel();
     });
   });
 

@@ -300,6 +300,12 @@ class _MascotWidgetState extends State<MascotWidget>
 
   @override
   Widget build(BuildContext context) {
+    if (!_modelLoaded) {
+      return const ColoredBox(
+        color: Colors.transparent,
+        child: SizedBox.expand(),
+      );
+    }
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: AnimatedBuilder(
@@ -366,7 +372,15 @@ class _MascotWidgetState extends State<MascotWidget>
                           onPanEnd: _isWander
                               ? (details) => _wander!.endDrag()
                               : null,
-                          child: _buildWanderWrapper(child: _buildCharacter()),
+                          child: _buildWanderWrapper(
+                            child: _isWander
+                                ? Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8),
+                                    child: _buildCharacter(),
+                                  )
+                                : _buildCharacter(),
+                          ),
                         ),
                       ),
                     ),

@@ -16,8 +16,8 @@ void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
 
-  // Wander mode uses a smaller window; extra width for outline dilation
-  final defaultWidth = config.wander ? 174.0 : 424.0;
+  // Wander mode uses a smaller window; extra width for outline dilation padding
+  final defaultWidth = config.wander ? 190.0 : 424.0;
   final defaultHeight = config.wander ? 350.0 : 528.0;
   final windowSize =
       Size(config.width ?? defaultWidth, config.height ?? defaultHeight);
@@ -175,6 +175,7 @@ class _MascotAppState extends State<MascotApp> {
   final List<_WanderChild> _wanderChildren = [];
   Timer? _spawnTimer;
   late final String _spawnSignalPath;
+  final List<Timer> _ttsTimers = [];
 
   @override
   void initState() {
@@ -350,7 +351,7 @@ class _MascotAppState extends State<MascotApp> {
   /// Send initial TTS to a newly spawned child mascot after a short delay,
   /// giving it time to initialize.
   void _sendDelayedTts(String signalDir) {
-    Future.delayed(const Duration(seconds: 2), () {
+    final writeTimer = Timer(const Duration(seconds: 2), () {
       final speakingFile = File('$signalDir/mascot_speaking');
       try {
         speakingFile.writeAsStringSync(
@@ -359,12 +360,14 @@ class _MascotAppState extends State<MascotApp> {
       } catch (_) {
         return; // signal dir may have been cleaned up already
       }
-      Future.delayed(const Duration(seconds: 2), () {
+      final clearTimer = Timer(const Duration(seconds: 2), () {
         try {
           speakingFile.deleteSync();
         } catch (_) {}
       });
+      _ttsTimers.add(clearTimer);
     });
+    _ttsTimers.add(writeTimer);
   }
 
   void _spawnWanderProcess(String signalDir, String model) {
@@ -410,6 +413,10 @@ class _MascotAppState extends State<MascotApp> {
   @override
   void dispose() {
     _spawnTimer?.cancel();
+    for (final timer in _ttsTimers) {
+      timer.cancel();
+    }
+    _ttsTimers.clear();
     // Dismiss and kill all wander child processes
     for (final child in _wanderChildren) {
       try {
