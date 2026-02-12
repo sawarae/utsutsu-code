@@ -75,12 +75,13 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
     _simulation = SwarmSimulation(
       vsync: this,
       config: widget.config,
+      // Placeholder dimensions; updated in didChangeDependencies with actual window size.
       screenWidth: widget.screenWidth,
       screenHeight: widget.screenHeight,
       entityWidth: _entityWidth,
       entityHeight: _entityHeight,
       collisionEnabled: widget.collisionEnabled,
-      bottomMargin: -30,
+      bottomMargin: widget.config.swarmBottomMargin,
     );
 
     _spriteCache = SpriteCache();
@@ -169,6 +170,8 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
     } catch (_) {
       _startSpawnPolling();
     }
+    // Check for a signal that was written before the watcher started
+    _checkSpawnSignal();
   }
 
   void _startSpawnPolling() {
@@ -393,6 +396,12 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    // Use actual widget size (accounts for Dock/menu bar clipping by macOS).
+    final mq = MediaQuery.of(context).size;
+    if (mq.width > 0 && mq.height > 0) {
+      _simulation.screenWidth = mq.width;
+      _simulation.screenHeight = mq.height;
+    }
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: GestureDetector(

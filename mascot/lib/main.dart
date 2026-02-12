@@ -40,6 +40,7 @@ void main(List<String> args) async {
         await windowManager.setMinimizable(false);
         await windowManager.setMovable(false);
       }
+      await windowManager.setSize(screenSize);
       await windowManager.setPosition(Offset.zero);
       await windowManager.show();
     });
@@ -405,7 +406,16 @@ class _MascotAppState extends State<MascotApp> {
     final file = File(_spawnSignalPath);
     if (!file.existsSync()) return;
 
-    // Atomically claim the signal file to prevent race conditions
+    // In swarm mode, don't consume the signal — just ensure the overlay
+    // is running and let it handle all spawn signals directly.
+    if (_wc.maxChildren > _wc.swarmThreshold) {
+      if (_swarmOverlay == null) {
+        _launchSwarmOverlay('blend_shape_mini');
+      }
+      return;
+    }
+
+    // Non-swarm mode: atomically claim the signal file
     final claimedPath = '${_spawnSignalPath}_processing';
     try {
       file.renameSync(claimedPath);
@@ -435,14 +445,8 @@ class _MascotAppState extends State<MascotApp> {
       final dismissFile = File('$signalDir/mascot_dismiss');
       if (dismissFile.existsSync()) dismissFile.deleteSync();
 
-      // Route through swarm overlay when max_children exceeds swarm threshold,
-      // or spawn individual wander processes for small counts
-      if (_wc.maxChildren > _wc.swarmThreshold) {
-        _spawnViaSwarm(signalDir, 'blend_shape_mini');
-      } else {
-        _spawnWanderProcess(signalDir, 'blend_shape_mini');
-        _sendDelayedTts(signalDir);
-      }
+      _spawnWanderProcess(signalDir, 'blend_shape_mini');
+      _sendDelayedTts(signalDir);
     } catch (e) {
       debugPrint('Failed to spawn child mascot: $e');
     }
@@ -468,18 +472,6 @@ class _MascotAppState extends State<MascotApp> {
       _ttsTimers.add(clearTimer);
     });
     _ttsTimers.add(writeTimer);
-  }
-
-  /// Launch the swarm overlay as a single child process (or reuse existing).
-  /// The swarm overlay watches for spawn_child signals internally.
-  void _spawnViaSwarm(String signalDir, String model) {
-    if (_swarmOverlay != null) {
-      // Swarm overlay is already running; it will pick up the spawn signal
-      // via its own file watcher. Just send delayed TTS.
-      _sendDelayedTts(signalDir);
-      return;
-    }
-    _launchSwarmOverlay(model);
   }
 
   void _launchSwarmOverlay(String model) {

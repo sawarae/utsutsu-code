@@ -13,8 +13,8 @@ import 'mascot_entity.dart';
 class SwarmSimulation extends ChangeNotifier {
   final List<MascotEntity> entities = [];
   final WindowConfig config;
-  final double screenWidth;
-  final double screenHeight;
+  double screenWidth;
+  double screenHeight;
   final double entityWidth;
   final double entityHeight;
   final bool collisionEnabled;
@@ -24,6 +24,8 @@ class SwarmSimulation extends ChangeNotifier {
   late final CollisionGrid _grid;
   final Random _rng = Random();
   Duration _lastElapsed = Duration.zero;
+  int _lastNotifyMs = 0;
+  int _collisionSkipCounter = 0;
 
   /// Number of collisions resolved in the last tick (for debugging).
   int lastCollisionCount = 0;
@@ -109,8 +111,9 @@ class SwarmSimulation extends ChangeNotifier {
       _updateTimers(e);
     }
 
-    // 2. Collision detection (if enabled)
-    if (collisionEnabled) {
+    // 2. Collision detection (if enabled), throttled to ~20Hz
+    if (collisionEnabled && ++_collisionSkipCounter >= 3) {
+      _collisionSkipCounter = 0;
       _grid.clear();
       for (final e in entities) {
         if (!e.isDragging && !e.isDropping && !e.dismissed) {
@@ -120,7 +123,11 @@ class SwarmSimulation extends ChangeNotifier {
       lastCollisionCount = _grid.resolveCollisions();
     }
 
-    // 3. Single notification
+    // 3. Throttle repaints to ~30fps; skip if no entities
+    if (entities.isEmpty) return;
+    final nowMs = elapsed.inMilliseconds;
+    if (nowMs - _lastNotifyMs < 33) return;
+    _lastNotifyMs = nowMs;
     notifyListeners();
   }
 
@@ -279,7 +286,7 @@ class SwarmSimulation extends ChangeNotifier {
     e.x += dx;
     e.y += dy;
     e.x = e.x.clamp(0.0, screenWidth - entityWidth);
-    e.y = e.y.clamp(0.0, screenHeight - entityHeight);
+    e.y = e.y.clamp(0.0, screenHeight - entityHeight + bottomMargin);
 
     final now = DateTime.now().millisecondsSinceEpoch;
     e.dragSamples.add((now, e.x, e.y));

@@ -54,6 +54,7 @@ class WindowConfig {
   final int lod0TimeoutMs;
   final int signalPollMs;
   final double clickThroughInterval;
+  final double swarmBottomMargin;
 
   const WindowConfig({
     this.mainWidth = 424.0,
@@ -88,6 +89,7 @@ class WindowConfig {
     this.lod0TimeoutMs = 6000,
     this.signalPollMs = 200,
     this.clickThroughInterval = 0.05,
+    this.swarmBottomMargin = -30.0,
   });
 
   /// Load from a TOML file, falling back to defaults for missing values.
@@ -175,6 +177,7 @@ class WindowConfig {
       lod0TimeoutMs: _i(swarm['lod0_timeout_ms']) ?? 6000,
       signalPollMs: _i(swarm['signal_poll_ms']) ?? 200,
       clickThroughInterval: _d(swarm['click_through_interval']) ?? 0.05,
+      swarmBottomMargin: _d(swarm['bottom_margin']) ?? -30.0,
     );
   }
 

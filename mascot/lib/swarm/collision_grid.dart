@@ -27,7 +27,10 @@ class CollisionGrid {
   }
 
   void clear() {
-    _cells.clear();
+    // Reuse existing lists to reduce GC pressure
+    for (final list in _cells.values) {
+      list.clear();
+    }
   }
 
   void insert(MascotEntity e) {
@@ -39,7 +42,7 @@ class CollisionGrid {
     for (var cx = minCx; cx <= maxCx; cx++) {
       for (var cy = minCy; cy <= maxCy; cy++) {
         final key = cx * 100000 + cy;
-        _cells.putIfAbsent(key, () => []).add(e);
+        (_cells[key] ??= []).add(e);
       }
     }
   }
