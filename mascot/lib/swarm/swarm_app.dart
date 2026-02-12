@@ -417,7 +417,6 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
                 painter: SwarmPainter(
                   simulation: _simulation,
                   sprites: _spriteCache,
-                  activeEntityIndex: _activeEntityIndex,
                 ),
               ),
             ),

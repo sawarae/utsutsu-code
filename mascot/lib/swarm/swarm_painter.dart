@@ -13,12 +13,10 @@ import 'swarm_simulation.dart';
 class SwarmPainter extends CustomPainter {
   final SwarmSimulation simulation;
   final SpriteCache sprites;
-  final int? activeEntityIndex;
 
   SwarmPainter({
     required this.simulation,
     required this.sprites,
-    this.activeEntityIndex,
   }) : super(repaint: simulation);
 
   @override
@@ -65,65 +63,8 @@ class SwarmPainter extends CustomPainter {
     }
   }
 
-  void _drawBubble(Canvas canvas, MascotEntity e) {
-    final bubbleX = e.x + sprites.spriteWidth / 2;
-    final bubbleY = e.y + e.bounceOffset + sprites.spriteHeight / 2 - 10;
-
-    // Measure text
-    final textSpan = TextSpan(
-      text: e.message,
-      style: const TextStyle(
-        fontSize: 9,
-        color: Colors.black87,
-      ),
-    );
-    final textPainter = TextPainter(
-      text: textSpan,
-      textDirection: TextDirection.ltr,
-      maxLines: 2,
-    )..layout(maxWidth: sprites.spriteWidth - 12);
-
-    final bubbleW = textPainter.width + 12;
-    final bubbleH = textPainter.height + 6;
-    final bubbleRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(
-        bubbleX - bubbleW / 2,
-        bubbleY - bubbleH - 6,
-        bubbleW,
-        bubbleH,
-      ),
-      const Radius.circular(8),
-    );
-
-    // Shadow
-    canvas.drawRRect(
-      bubbleRect.shift(const Offset(1, 2)),
-      Paint()
-        ..color = Colors.black26
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
-    );
-    // Background
-    canvas.drawRRect(
-      bubbleRect,
-      Paint()..color = Colors.white,
-    );
-
-    // Tail
-    final tailPath = ui.Path()
-      ..moveTo(bubbleX - 5, bubbleY - 6)
-      ..lineTo(bubbleX, bubbleY)
-      ..lineTo(bubbleX + 5, bubbleY - 6)
-      ..close();
-    canvas.drawPath(tailPath, Paint()..color = Colors.white);
-
-    // Text
-    textPainter.paint(canvas, Offset(bubbleX - bubbleW / 2 + 6, bubbleY - bubbleH - 3));
-  }
-
   @override
-  bool shouldRepaint(SwarmPainter oldDelegate) {
-    return oldDelegate.activeEntityIndex != activeEntityIndex;
-  }
+  bool shouldRepaint(SwarmPainter oldDelegate) => false;
 }
 
 /// Draws speech bubbles on top of everything (including LOD0 widget).
@@ -204,5 +145,9 @@ class BubblePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(BubblePainter oldDelegate) => false;
+  bool shouldRepaint(BubblePainter oldDelegate) {
+    return oldDelegate.simulation != simulation ||
+        oldDelegate.spriteWidth != spriteWidth ||
+        oldDelegate.spriteHeight != spriteHeight;
+  }
 }

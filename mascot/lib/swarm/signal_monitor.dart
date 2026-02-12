@@ -55,18 +55,26 @@ class SignalMonitor {
     final file = File('${e.signalDir}/mascot_speaking');
     final exists = file.existsSync();
 
-    if (exists && !e.isSpeaking) {
-      e.isSpeaking = true;
-      e.speakingStartMs = DateTime.now().millisecondsSinceEpoch;
+    if (exists) {
       try {
         final content = file.readAsStringSync().trim();
         if (content.isNotEmpty) {
           final parsed = _parseSignalContent(content);
+          // Update message/emotion and reset timer (handles new speech
+          // arriving while the minimum-duration hold is still active).
           e.message = parsed.$1;
           e.emotion = parsed.$2;
-          onSpeech?.call(e, parsed.$1, parsed.$2);
+          e.speakingStartMs = DateTime.now().millisecondsSinceEpoch;
+          if (!e.isSpeaking) {
+            e.isSpeaking = true;
+            onSpeech?.call(e, parsed.$1, parsed.$2);
+          }
         }
       } catch (_) {
+        if (!e.isSpeaking) {
+          e.isSpeaking = true;
+          e.speakingStartMs = DateTime.now().millisecondsSinceEpoch;
+        }
         e.message = '';
         e.emotion = null;
       }
