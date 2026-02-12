@@ -17,9 +17,11 @@ class MascotWidget extends StatefulWidget {
   final WanderController? wanderController;
   final bool outlineEnabled;
 
-  /// Override render width for camera zoom scaling (e.g. swarm LOD0).
-  /// When set, camera zoom is scaled by renderWidth / 264.0.
+  /// Override render dimensions for swarm LOD0 mode.
+  /// When set, camera zoom is scaled by renderWidth / 264.0
+  /// and the character area uses these dimensions instead of defaults.
   final double? renderWidth;
+  final double? renderHeight;
 
   /// Called when the dismiss animation completes.
   /// If null, the window is closed (main mascot behavior).
@@ -31,6 +33,7 @@ class MascotWidget extends StatefulWidget {
     this.wanderController,
     this.outlineEnabled = false,
     this.renderWidth,
+    this.renderHeight,
     this.onDismissComplete,
   });
 
@@ -336,11 +339,13 @@ class _MascotWidgetState extends State<MascotWidget>
         child: ListenableBuilder(
           listenable: _controller,
           builder: (context, _) {
-            final charW = _isWander ? _wander!.windowWidth : 264.0;
-            // Wander mode: fill the entire window height so the
+            final charW = widget.renderWidth ??
+                (_isWander ? _wander!.windowWidth : 264.0);
+            // Wander mode / swarm LOD0: fill the entire area so the
             // character head sits near the top and the speech bubble
             // (overlaid at top:0) appears right above it.
-            final charH = _isWander ? _wander!.windowHeight.toDouble() : 528.0;
+            final charH = widget.renderHeight ??
+                (_isWander ? _wander!.windowHeight.toDouble() : 528.0);
 
             // Position bubble just above the character head in wander mode.
             // The character renders in the lower portion of the window

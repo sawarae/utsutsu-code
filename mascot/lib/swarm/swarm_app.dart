@@ -434,6 +434,7 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
                                 controller: _activeMascotController!,
                                 outlineEnabled: false,
                                 renderWidth: _entityWidth,
+                                renderHeight: _entityHeight,
                               )
                             : Transform.flip(
                                 flipX: true,
@@ -441,6 +442,7 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
                                   controller: _activeMascotController!,
                                   outlineEnabled: false,
                                   renderWidth: _entityWidth,
+                                  renderHeight: _entityHeight,
                                 ),
                               ),
                       ),
