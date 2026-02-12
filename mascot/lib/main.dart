@@ -355,8 +355,11 @@ class _MascotAppState extends State<MascotApp> {
 
       final json = jsonDecode(content) as Map<String, dynamic>;
 
-      // New format: only task_id; parent decides policy
-      final taskId = json['task_id'] as String;
+      // Unwrap envelope v1 or use legacy format directly
+      final payload = json.containsKey('version')
+          ? (json['payload'] as Map<String, dynamic>? ?? {})
+          : json;
+      final taskId = payload['task_id'] as String;
       final parentDir = widget.config.signalDir ?? _defaultSignalDir();
       final signalDir = '$parentDir/task-$taskId';
 

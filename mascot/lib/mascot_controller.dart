@@ -131,8 +131,9 @@ class MascotController extends ChangeNotifier {
 
   /// Parse signal file content.
   ///
-  /// Supports two formats:
-  /// - JSON: `{"message": "text", "emotion": "Joy"}`
+  /// Supports three formats:
+  /// - Envelope v1: `{"version":"1","type":"mascot.speech","payload":{...}}`
+  /// - Legacy JSON: `{"message": "text", "emotion": "Joy"}`
   /// - Plain text: `text` (backward compatible, no emotion)
   void _parseSignalContent(String content) {
     if (content.isEmpty) {
@@ -145,8 +146,9 @@ class MascotController extends ChangeNotifier {
     if (content.startsWith('{')) {
       try {
         final json = jsonDecode(content) as Map<String, dynamic>;
-        _message = (json['message'] as String?) ?? '';
-        final emotion = json['emotion'] as String?;
+        final payload = _unwrapEnvelope(json);
+        _message = (payload['message'] as String?) ?? '';
+        final emotion = payload['emotion'] as String?;
         _setEmotion(emotion);
         return;
       } on FormatException {
@@ -157,6 +159,15 @@ class MascotController extends ChangeNotifier {
     // Plain text fallback
     _message = content;
     _setEmotion(null);
+  }
+
+  /// Unwrap a signal envelope to extract the payload.
+  /// Returns the payload map for envelope v1, or the map itself for legacy.
+  static Map<String, dynamic> _unwrapEnvelope(Map<String, dynamic> json) {
+    if (json.containsKey('version') && json.containsKey('type')) {
+      return (json['payload'] as Map<String, dynamic>?) ?? {};
+    }
+    return json;
   }
 
   /// Apply emotion parameters from the model config.

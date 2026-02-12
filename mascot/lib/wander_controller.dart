@@ -466,8 +466,10 @@ class WanderController extends ChangeNotifier {
     _writingPosition = true;
     _lastBroadcastX = _x;
     _lastBroadcastY = _y;
+    final payload = '{"x":$_x,"y":$_y,"w":$windowWidth,"h":$windowHeight}';
+    final envelope = '{"version":"1","type":"mascot.position","payload":$payload}';
     File('$dir/mascot_position')
-        .writeAsString('{"x":$_x,"y":$_y,"w":$windowWidth,"h":$windowHeight}')
+        .writeAsString(envelope)
         .then((_) => _writingPosition = false)
         .catchError((_) { _writingPosition = false; return File(''); });
   }
@@ -485,7 +487,11 @@ class WanderController extends ChangeNotifier {
         if (!posFile.existsSync()) continue;
         posFile.readAsString().then((content) {
           try {
-            final data = jsonDecode(content) as Map<String, dynamic>;
+            final json = jsonDecode(content) as Map<String, dynamic>;
+            // Unwrap envelope v1 or use legacy format directly
+            final data = json.containsKey('version')
+                ? (json['payload'] as Map<String, dynamic>? ?? {})
+                : json;
             resolveCollision(
               (data['x'] as num).toDouble(),
               (data['y'] as num).toDouble(),

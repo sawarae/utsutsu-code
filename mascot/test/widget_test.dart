@@ -875,6 +875,101 @@ void main() {
     });
   });
 
+  // ── Signal Envelope Tests (#39) ─────────────────────────────
+
+  group('Signal envelope format', () {
+    late Directory signalDir;
+    late MascotController controller;
+
+    setUp(() {
+      signalDir = Directory.systemTemp.createTempSync('envelope_test_');
+      File('${signalDir.path}/mascot_speaking').createSync();
+      controller = MascotController.withConfig(
+        '${signalDir.path}/mascot_speaking',
+        _blendShapeConfig('/tmp/test'),
+      );
+    });
+
+    tearDown(() {
+      controller.dispose();
+      signalDir.deleteSync(recursive: true);
+    });
+
+    test('envelope v1 speech signal sets message and emotion', () async {
+      final envelope = jsonEncode({
+        'version': '1',
+        'type': 'mascot.speech',
+        'payload': {'message': 'こんにちは', 'emotion': 'Joy'},
+      });
+      File('${signalDir.path}/mascot_speaking')
+          .writeAsStringSync(envelope);
+
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(controller.message, 'こんにちは');
+      expect(controller.isSpeaking, true);
+    });
+
+    test('legacy JSON signal still works (backward compatible)', () async {
+      final legacy = jsonEncode({
+        'message': 'レガシー形式',
+        'emotion': 'Gentle',
+      });
+      File('${signalDir.path}/mascot_speaking')
+          .writeAsStringSync(legacy);
+
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(controller.message, 'レガシー形式');
+      expect(controller.isSpeaking, true);
+    });
+
+    test('plain text signal still works (backward compatible)', () async {
+      File('${signalDir.path}/mascot_speaking')
+          .writeAsStringSync('プレーンテキスト');
+
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(controller.message, 'プレーンテキスト');
+      expect(controller.isSpeaking, true);
+    });
+
+    test('spawn signal envelope is unwrapped correctly', () {
+      final envelope = jsonEncode({
+        'version': '1',
+        'type': 'mascot.spawn',
+        'payload': {'task_id': 'abc12345'},
+      });
+      final json = jsonDecode(envelope) as Map<String, dynamic>;
+      // Unwrap envelope
+      final payload = json.containsKey('version')
+          ? (json['payload'] as Map<String, dynamic>? ?? {})
+          : json;
+      expect(payload['task_id'], 'abc12345');
+    });
+
+    test('legacy spawn signal is read directly', () {
+      final legacy = jsonEncode({'task_id': 'def67890'});
+      final json = jsonDecode(legacy) as Map<String, dynamic>;
+      // No envelope, read directly
+      final payload = json.containsKey('version')
+          ? (json['payload'] as Map<String, dynamic>? ?? {})
+          : json;
+      expect(payload['task_id'], 'def67890');
+    });
+
+    test('position envelope is unwrapped for collision', () {
+      final envelope = jsonEncode({
+        'version': '1',
+        'type': 'mascot.position',
+        'payload': {'x': 100.0, 'y': 200.0, 'w': 150.0, 'h': 350.0},
+      });
+      final json = jsonDecode(envelope) as Map<String, dynamic>;
+      final data = json.containsKey('version')
+          ? (json['payload'] as Map<String, dynamic>? ?? {})
+          : json;
+      expect((data['x'] as num).toDouble(), 100.0);
+      expect((data['y'] as num).toDouble(), 200.0);
+    });
+  });
+
   // ── WindowConfig Tests (#38) ──────────────────────────────
 
   group('WindowConfig', () {
