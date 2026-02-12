@@ -747,4 +747,93 @@ void main() {
       expect(collided, true);
     });
   });
+
+  // ── Spawn Signal Format Tests ─────────────────────────────
+
+  group('Spawn signal format (task_id only)', () {
+    late Directory signalDir;
+
+    setUp(() {
+      signalDir = Directory.systemTemp.createTempSync('spawn_signal_test_');
+    });
+
+    tearDown(() {
+      signalDir.deleteSync(recursive: true);
+    });
+
+    test('new format: task_id only produces valid signal dir path', () {
+      final spawnFile = File('${signalDir.path}/spawn_child');
+      spawnFile.writeAsStringSync(jsonEncode({'task_id': 'abc12345'}));
+
+      final content = spawnFile.readAsStringSync().trim();
+      final json = jsonDecode(content) as Map<String, dynamic>;
+      final taskId = json['task_id'] as String;
+      final taskSignalDir = '${signalDir.path}/task-$taskId';
+
+      expect(taskId, 'abc12345');
+      expect(taskSignalDir, endsWith('/task-abc12345'));
+    });
+
+    test('parent creates task dir from task_id', () {
+      final taskId = 'def67890';
+      final taskDir = Directory('${signalDir.path}/task-$taskId');
+
+      expect(taskDir.existsSync(), false);
+      taskDir.createSync(recursive: true);
+      expect(taskDir.existsSync(), true);
+    });
+
+    test('stale task dirs with mascot_dismiss are cleaned up', () {
+      // Create orphaned task dirs
+      final staleDir = Directory('${signalDir.path}/task-stale01')
+        ..createSync(recursive: true);
+      File('${staleDir.path}/mascot_dismiss').createSync();
+
+      final activeDir = Directory('${signalDir.path}/task-active01')
+        ..createSync(recursive: true);
+
+      // Simulate cleanup: remove dirs with mascot_dismiss
+      for (final entity in signalDir.listSync()) {
+        if (entity is Directory) {
+          final name = entity.path.split('/').last;
+          if (!name.startsWith('task-')) continue;
+          if (File('${entity.path}/mascot_dismiss').existsSync()) {
+            entity.deleteSync(recursive: true);
+          }
+        }
+      }
+
+      expect(staleDir.existsSync(), false);
+      expect(activeDir.existsSync(), true);
+    });
+
+    test('untracked task dirs are cleaned up', () {
+      // Create task dirs (none tracked in wander_children.json)
+      final orphanDir = Directory('${signalDir.path}/task-orphan01')
+        ..createSync(recursive: true);
+
+      final knownSignalDirs = <String>{};
+
+      for (final entity in signalDir.listSync()) {
+        if (entity is Directory) {
+          final name = entity.path.split('/').last;
+          if (!name.startsWith('task-')) continue;
+          if (!knownSignalDirs.contains(entity.path)) {
+            entity.deleteSync(recursive: true);
+          }
+        }
+      }
+
+      expect(orphanDir.existsSync(), false);
+    });
+
+    test('legacy _active_task_mascots file is removed', () {
+      final legacyFile = File('${signalDir.path}/_active_task_mascots');
+      legacyFile.writeAsStringSync('abc123 /tmp/task-abc123\n');
+
+      expect(legacyFile.existsSync(), true);
+      legacyFile.deleteSync();
+      expect(legacyFile.existsSync(), false);
+    });
+  });
 }

@@ -218,36 +218,76 @@ class _MascotAppState extends State<MascotApp> {
   }
 
   /// Kill zombie wander children left behind by a previous parent that
-  /// crashed before its [dispose] could run.
+  /// crashed before its [dispose] could run, and clean up orphaned task dirs.
   void _cleanStaleChildren() {
     final signalDir = widget.config.signalDir ?? _defaultSignalDir();
-    final childrenFile = File('$signalDir/wander_children.json');
-    if (!childrenFile.existsSync()) return;
 
-    try {
-      final data =
-          jsonDecode(childrenFile.readAsStringSync()) as List<dynamic>;
-      for (final entry in data) {
-        final pid = entry['pid'] as int?;
-        final dir = entry['signalDir'] as String?;
-        if (pid != null) {
-          try {
-            Process.killPid(pid);
-          } catch (_) {}
+    // 1. Kill zombie wander children from wander_children.json
+    final childrenFile = File('$signalDir/wander_children.json');
+    final knownSignalDirs = <String>{};
+    if (childrenFile.existsSync()) {
+      try {
+        final data =
+            jsonDecode(childrenFile.readAsStringSync()) as List<dynamic>;
+        for (final entry in data) {
+          final pid = entry['pid'] as int?;
+          final dir = entry['signalDir'] as String?;
+          if (pid != null) {
+            try {
+              Process.killPid(pid);
+            } catch (_) {}
+          }
+          if (dir != null) {
+            knownSignalDirs.add(dir);
+            try {
+              File('$dir/mascot_dismiss').writeAsStringSync('');
+            } catch (_) {}
+          }
         }
-        if (dir != null) {
-          try {
-            File('$dir/mascot_dismiss').writeAsStringSync('');
-          } catch (_) {}
+        childrenFile.deleteSync();
+      } catch (e) {
+        debugPrint('Failed to clean stale children: $e');
+        try {
+          childrenFile.deleteSync();
+        } catch (_) {}
+      }
+    }
+
+    // 2. Clean orphaned task-* directories
+    try {
+      final parentDir = Directory(signalDir);
+      if (parentDir.existsSync()) {
+        for (final entity in parentDir.listSync()) {
+          if (entity is Directory) {
+            final name = entity.path.split('/').last;
+            if (!name.startsWith('task-')) continue;
+
+            final hasDismiss =
+                File('${entity.path}/mascot_dismiss').existsSync();
+            final isTracked = knownSignalDirs.contains(entity.path);
+
+            // Delete if dismissed or not tracked by any active wander child
+            if (hasDismiss || !isTracked) {
+              try {
+                entity.deleteSync(recursive: true);
+                debugPrint('Cleaned stale task dir: ${entity.path}');
+              } catch (_) {}
+            }
+          }
         }
       }
-      childrenFile.deleteSync();
     } catch (e) {
-      debugPrint('Failed to clean stale children: $e');
-      try {
-        childrenFile.deleteSync();
-      } catch (_) {}
+      debugPrint('Failed to clean orphaned task dirs: $e');
     }
+
+    // 3. Remove legacy _active_task_mascots tracking file
+    try {
+      final legacyFile = File('$signalDir/_active_task_mascots');
+      if (legacyFile.existsSync()) {
+        legacyFile.deleteSync();
+        debugPrint('Removed legacy _active_task_mascots file');
+      }
+    } catch (_) {}
   }
 
   /// Persist current wander child PIDs to disk so they can be cleaned up
@@ -281,36 +321,47 @@ class _MascotAppState extends State<MascotApp> {
       claimedFile.deleteSync();
 
       final json = jsonDecode(content) as Map<String, dynamic>;
-      final signalDir = json['signal_dir'] as String;
-      final model = json['model'] as String? ?? 'blend_shape_mini';
-      final wander = json['wander'] as bool? ?? true;
 
-      // Clean any stale dismiss file
+      // New format: only task_id; parent decides policy
+      final taskId = json['task_id'] as String;
+      final parentDir = widget.config.signalDir ?? _defaultSignalDir();
+      final signalDir = '$parentDir/task-$taskId';
+
+      // Parent creates dir (moved from hook)
+      Directory(signalDir).createSync(recursive: true);
+
+      // Parent cleans stale dismiss (moved from hook)
       final dismissFile = File('$signalDir/mascot_dismiss');
       if (dismissFile.existsSync()) dismissFile.deleteSync();
 
-      // Ensure signal dir exists
-      Directory(signalDir).createSync(recursive: true);
+      // Parent decides model and wander policy
+      _spawnWanderProcess(signalDir, 'blend_shape_mini');
 
-      if (wander) {
-        _spawnWanderProcess(signalDir, model);
-      } else {
-        final controller = MascotController(
-          signalDir: signalDir,
-          modelsDir: widget.config.modelsDir,
-          model: model,
-        );
-        setState(() {
-          _children.add(_ChildMascot(
-            signalDir: signalDir,
-            controller: controller,
-          ));
-        });
-        _updateWindowSize();
-      }
+      // Parent sends delayed TTS (moved from hook's sleep 2 && TTS)
+      _sendDelayedTts(signalDir);
     } catch (e) {
       debugPrint('Failed to spawn child mascot: $e');
     }
+  }
+
+  /// Send initial TTS to a newly spawned child mascot after a short delay,
+  /// giving it time to initialize.
+  void _sendDelayedTts(String signalDir) {
+    Future.delayed(const Duration(seconds: 2), () {
+      final speakingFile = File('$signalDir/mascot_speaking');
+      try {
+        speakingFile.writeAsStringSync(
+          jsonEncode({'message': 'タスク開始します', 'emotion': 'Gentle'}),
+        );
+      } catch (_) {
+        return; // signal dir may have been cleaned up already
+      }
+      Future.delayed(const Duration(seconds: 2), () {
+        try {
+          speakingFile.deleteSync();
+        } catch (_) {}
+      });
+    });
   }
 
   void _spawnWanderProcess(String signalDir, String model) {
