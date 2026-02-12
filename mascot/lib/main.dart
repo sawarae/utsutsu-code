@@ -230,7 +230,7 @@ class MascotApp extends StatefulWidget {
   State<MascotApp> createState() => _MascotAppState();
 }
 
-class _MascotAppState extends State<MascotApp> {
+class _MascotAppState extends State<MascotApp> with WindowListener {
   WindowConfig get _wc => widget.windowConfig;
 
   late final MascotController _controller;
@@ -242,6 +242,7 @@ class _MascotAppState extends State<MascotApp> {
   late final String _spawnSignalPath;
   final List<Timer> _ttsTimers = [];
   _WanderChild? _swarmOverlay; // Single swarm overlay process
+  bool _cleanedUp = false;
 
   @override
   void initState() {
@@ -272,6 +273,15 @@ class _MascotAppState extends State<MascotApp> {
     // Clean up zombie wander children from a previous (crashed) parent
     if (!widget.config.wander) {
       _cleanStaleChildren();
+    }
+
+    // Intercept macOS close button (traffic light red ×) so that dispose()
+    // cleanup actually runs before the process exits.  Without this, the OS
+    // terminates the process immediately and child wander mascots become
+    // zombies.  Only needed for the parent mascot (non-wander).
+    if (!widget.config.wander) {
+      windowManager.addListener(this);
+      windowManager.setPreventClose(true);
     }
 
     // Watch for child spawn signals (only in non-wander mode)
@@ -535,7 +545,17 @@ class _MascotAppState extends State<MascotApp> {
   }
 
   @override
-  void dispose() {
+  void onWindowClose() async {
+    await _performCleanup();
+    await windowManager.destroy();
+  }
+
+  /// Cleanup child processes, timers, and controllers.  Guarded against
+  /// double invocation (onWindowClose runs first, then dispose may follow).
+  Future<void> _performCleanup() async {
+    if (_cleanedUp) return;
+    _cleanedUp = true;
+
     _spawnTimer?.cancel();
     _spawnWatcher?.cancel();
     for (final timer in _ttsTimers) {
@@ -569,6 +589,12 @@ class _MascotAppState extends State<MascotApp> {
     }
     _wanderController?.dispose();
     _controller.dispose();
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    _performCleanup();
     super.dispose();
   }
 
