@@ -101,6 +101,8 @@ class MainFlutterWindow: NSWindow {
         if let enabled = call.arguments as? Bool {
           self?.isSwarmMode = enabled
           if enabled {
+            // Disable native window drag — Flutter handles entity dragging
+            self?.nativeDragEnabled = false
             // Stop bitmap-based click-through, use entity rect hit-testing
             self?.clickThroughTimer?.invalidate()
             self?.clickThroughTimer = nil

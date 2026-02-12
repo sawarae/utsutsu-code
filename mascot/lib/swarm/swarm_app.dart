@@ -433,12 +433,14 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
                             ? MascotWidget(
                                 controller: _activeMascotController!,
                                 outlineEnabled: false,
+                                renderWidth: _entityWidth,
                               )
                             : Transform.flip(
                                 flipX: true,
                                 child: MascotWidget(
                                   controller: _activeMascotController!,
                                   outlineEnabled: false,
+                                  renderWidth: _entityWidth,
                                 ),
                               ),
                       ),

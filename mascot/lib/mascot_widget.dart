@@ -17,6 +17,10 @@ class MascotWidget extends StatefulWidget {
   final WanderController? wanderController;
   final bool outlineEnabled;
 
+  /// Override render width for camera zoom scaling (e.g. swarm LOD0).
+  /// When set, camera zoom is scaled by renderWidth / 264.0.
+  final double? renderWidth;
+
   /// Called when the dismiss animation completes.
   /// If null, the window is closed (main mascot behavior).
   final VoidCallback? onDismissComplete;
@@ -26,6 +30,7 @@ class MascotWidget extends StatefulWidget {
     required this.controller,
     this.wanderController,
     this.outlineEnabled = false,
+    this.renderWidth,
     this.onDismissComplete,
   });
 
@@ -142,8 +147,10 @@ class _MascotWidgetState extends State<MascotWidget>
       final camera = pc.camera;
       if (camera != null) {
         var zoom = config.cameraZoom;
-        // Scale zoom for wander mode's smaller window
-        if (_isWander) {
+        // Scale zoom for wander mode's smaller window or swarm LOD0
+        if (widget.renderWidth != null) {
+          zoom *= widget.renderWidth! / 264.0;
+        } else if (_isWander) {
           zoom *= _wander!.windowWidth / 264.0;
         }
         camera.zoom = zoom;
