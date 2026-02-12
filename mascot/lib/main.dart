@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Directory, File, Platform, Process, ProcessStartMode;
+import 'dart:io' show Directory, File, FileSystemEvent, Platform, Process, ProcessStartMode;
 
 import 'package:flutter/material.dart';
 import 'package:screen_retriever/screen_retriever.dart';
@@ -174,6 +174,7 @@ class _MascotAppState extends State<MascotApp> {
   final List<_ChildMascot> _children = [];
   final List<_WanderChild> _wanderChildren = [];
   Timer? _spawnTimer;
+  StreamSubscription<FileSystemEvent>? _spawnWatcher;
   late final String _spawnSignalPath;
   final List<Timer> _ttsTimers = [];
 
@@ -206,13 +207,40 @@ class _MascotAppState extends State<MascotApp> {
       _cleanStaleChildren();
     }
 
-    // Poll for child spawn signals (only in non-wander mode)
+    // Watch for child spawn signals (only in non-wander mode)
     if (!widget.config.wander) {
-      _spawnTimer = Timer.periodic(
-        const Duration(milliseconds: 200),
-        (_) => _checkSpawnSignal(),
-      );
+      _startSpawnWatcher();
     }
+  }
+
+  /// Use FSEvents (macOS) / inotify (Linux) to watch for spawn_child file
+  /// creation. Falls back to 200ms polling if watch() is unavailable.
+  void _startSpawnWatcher() {
+    final signalDir = widget.config.signalDir ?? _defaultSignalDir();
+    final dir = Directory(signalDir);
+    if (!dir.existsSync()) dir.createSync(recursive: true);
+    try {
+      _spawnWatcher = dir.watch(events: FileSystemEvent.create).listen((event) {
+        if (event.path.endsWith('/spawn_child')) {
+          _checkSpawnSignal();
+        }
+      }, onError: (_) {
+        // Fallback to polling on watch error
+        _spawnWatcher?.cancel();
+        _spawnWatcher = null;
+        _startSpawnPolling();
+      });
+    } catch (_) {
+      _startSpawnPolling();
+    }
+  }
+
+  void _startSpawnPolling() {
+    _spawnTimer?.cancel();
+    _spawnTimer = Timer.periodic(
+      const Duration(milliseconds: 200),
+      (_) => _checkSpawnSignal(),
+    );
   }
 
   static String _defaultSignalDir() {
@@ -413,6 +441,7 @@ class _MascotAppState extends State<MascotApp> {
   @override
   void dispose() {
     _spawnTimer?.cancel();
+    _spawnWatcher?.cancel();
     for (final timer in _ttsTimers) {
       timer.cancel();
     }
