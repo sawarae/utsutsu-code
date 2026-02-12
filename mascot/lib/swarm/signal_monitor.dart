@@ -14,6 +14,10 @@ class SignalMonitor {
   Timer? _timer;
   final int pollIntervalMs;
 
+  /// Minimum duration (ms) to keep a speech bubble visible, even if the
+  /// signal file is deleted sooner (e.g. mascot_tts.py clears it after audio).
+  final int minBubbleDurationMs;
+
   /// Called when an entity should show a speech bubble.
   final void Function(MascotEntity entity, String message, String? emotion)? onSpeech;
 
@@ -25,6 +29,7 @@ class SignalMonitor {
 
   SignalMonitor({
     this.pollIntervalMs = 200,
+    this.minBubbleDurationMs = 5000,
     this.onSpeech,
     this.onSpeechEnd,
     this.onDismiss,
@@ -52,6 +57,7 @@ class SignalMonitor {
 
     if (exists && !e.isSpeaking) {
       e.isSpeaking = true;
+      e.speakingStartMs = DateTime.now().millisecondsSinceEpoch;
       try {
         final content = file.readAsStringSync().trim();
         if (content.isNotEmpty) {
@@ -65,10 +71,16 @@ class SignalMonitor {
         e.emotion = null;
       }
     } else if (!exists && e.isSpeaking) {
-      e.isSpeaking = false;
-      e.message = '';
-      e.emotion = null;
-      onSpeechEnd?.call(e);
+      // Keep the bubble visible for at least minBubbleDurationMs so users
+      // can read it, even when mascot_tts.py deletes the file early.
+      final elapsed =
+          DateTime.now().millisecondsSinceEpoch - e.speakingStartMs;
+      if (elapsed >= minBubbleDurationMs) {
+        e.isSpeaking = false;
+        e.message = '';
+        e.emotion = null;
+        onSpeechEnd?.call(e);
+      }
     }
   }
 

@@ -52,4 +52,4 @@ click_through_interval = 0.05
 # Positive = entities render lower (compensates for transparent padding
 # below feet in the sprite; wander mode hides this by extending the
 # OS window below screen edge, but the swarm overlay cannot)
-bottom_margin = 100
+bottom_margin = 50

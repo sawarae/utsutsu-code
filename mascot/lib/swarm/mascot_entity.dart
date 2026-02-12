@@ -26,6 +26,9 @@ class MascotEntity {
   // --- Signal ---
   final String signalDir;
 
+  /// Epoch ms when speaking started (for minimum bubble duration).
+  int speakingStartMs = 0;
+
   // --- Countdown timers (in ticks) ---
   int reverseCountdown;
   int sparkleCountdown;

@@ -463,6 +463,16 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
                   );
                 },
               ),
+            // Speech bubbles on top of everything (including LOD0)
+            Positioned.fill(
+              child: CustomPaint(
+                painter: BubblePainter(
+                  simulation: _simulation,
+                  spriteWidth: _entityWidth,
+                  spriteHeight: _entityHeight,
+                ),
+              ),
+            ),
             // Entity count debug overlay (only in debug mode)
             if (false) // Set to true for debugging
               Positioned(
