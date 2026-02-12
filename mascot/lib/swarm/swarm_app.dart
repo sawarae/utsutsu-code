@@ -80,6 +80,7 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
       entityWidth: _entityWidth,
       entityHeight: _entityHeight,
       collisionEnabled: widget.collisionEnabled,
+      bottomMargin: -30,
     );
 
     _spriteCache = SpriteCache();
@@ -230,7 +231,7 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
       } catch (_) {
         return;
       }
-      final clearTimer = Timer(const Duration(seconds: 5), () {
+      final clearTimer = Timer(const Duration(seconds: 10), () {
         try {
           speakingFile.deleteSync();
         } catch (_) {}
@@ -427,25 +428,27 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
                       scaleX: sx,
                       scaleY: sy,
                       alignment: Alignment.bottomCenter,
-                      child: SizedBox(
-                        width: _entityWidth,
-                        height: _entityHeight,
-                        child: entity.facingLeft
-                            ? MascotWidget(
-                                controller: _activeMascotController!,
-                                outlineEnabled: false,
-                                renderWidth: _entityWidth,
-                                renderHeight: _entityHeight,
-                              )
-                            : Transform.flip(
-                                flipX: true,
-                                child: MascotWidget(
+                      child: ClipRect(
+                        child: SizedBox(
+                          width: _entityWidth,
+                          height: _entityHeight,
+                          child: entity.facingLeft
+                              ? MascotWidget(
                                   controller: _activeMascotController!,
                                   outlineEnabled: false,
                                   renderWidth: _entityWidth,
                                   renderHeight: _entityHeight,
+                                )
+                              : Transform.flip(
+                                  flipX: true,
+                                  child: MascotWidget(
+                                    controller: _activeMascotController!,
+                                    outlineEnabled: false,
+                                    renderWidth: _entityWidth,
+                                    renderHeight: _entityHeight,
+                                  ),
                                 ),
-                              ),
+                        ),
                       ),
                     ),
                   );
@@ -459,12 +462,17 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
                 child: ListenableBuilder(
                   listenable: _simulation,
                   builder: (context, _) {
+                    final positions = _simulation.entities
+                        .map((e) => 'y=${e.y.toInt()} drop=${e.isDropping}')
+                        .join('\n');
                     return Container(
                       padding: const EdgeInsets.all(8),
                       color: Colors.black54,
                       child: Text(
                         'Entities: ${_simulation.entities.length}\n'
-                        'Collisions: ${_simulation.lastCollisionCount}',
+                        'Screen: ${widget.screenWidth.toInt()}x${widget.screenHeight.toInt()}\n'
+                        'LOD0: $_activeEntityIndex\n'
+                        '$positions',
                         style: const TextStyle(color: Colors.white, fontSize: 12),
                       ),
                     );
