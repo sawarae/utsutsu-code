@@ -69,6 +69,9 @@ class WanderController extends ChangeNotifier {
   DateTime? _lastCollisionTime;
   static const _collisionCooldown = Duration(seconds: 5);
   bool _writingPosition = false;
+  double _lastBroadcastX = double.nan;
+  double _lastBroadcastY = double.nan;
+  static const _broadcastThreshold = 2.0; // px
 
   /// Called when a collision occurs (after cooldown).
   VoidCallback? onCollision;
@@ -254,7 +257,10 @@ class WanderController extends ChangeNotifier {
 
   void _onBounceTick(Duration elapsed) {
     final ms = elapsed.inMilliseconds % _bouncePeriodMs;
-    _bouncePhase = (ms / _bouncePeriodMs) * 2 * pi;
+    final newPhase = (ms / _bouncePeriodMs) * 2 * pi;
+    // Skip notification if phase change is negligible (< ~2° visual difference)
+    if ((newPhase - _bouncePhase).abs() < 0.035) return;
+    _bouncePhase = newPhase;
     notifyListeners();
   }
 
@@ -282,7 +288,6 @@ class WanderController extends ChangeNotifier {
     ) {
       step++;
       _speedMultiplier = (1.0 - step / steps).clamp(0.0, 1.0);
-      notifyListeners();
       if (step >= steps) {
         timer.cancel();
         _isPaused = true;
@@ -302,11 +307,9 @@ class WanderController extends ChangeNotifier {
             (timer) {
               accelStep++;
               _speedMultiplier = (accelStep / steps).clamp(0.0, 1.0);
-              notifyListeners();
               if (accelStep >= steps) {
                 timer.cancel();
                 _speedMultiplier = 1.0;
-                notifyListeners();
               }
             },
           );
@@ -456,10 +459,17 @@ class WanderController extends ChangeNotifier {
   // --- Collision detection ---
 
   /// Write this mascot's position to a signal file for siblings to read.
+  /// Skips write if position hasn't changed significantly since last broadcast.
   void _broadcastPosition() {
     final dir = signalDir;
     if (dir == null || _writingPosition) return;
+    // Skip if position hasn't moved enough
+    final dx = (_x - _lastBroadcastX).abs();
+    final dy = (_y - _lastBroadcastY).abs();
+    if (dx < _broadcastThreshold && dy < _broadcastThreshold) return;
     _writingPosition = true;
+    _lastBroadcastX = _x;
+    _lastBroadcastY = _y;
     File('$dir/mascot_position')
         .writeAsString('{"x":$_x,"y":$_y,"w":$windowWidth,"h":$windowHeight}')
         .then((_) => _writingPosition = false)
