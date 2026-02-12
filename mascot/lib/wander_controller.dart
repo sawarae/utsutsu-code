@@ -400,7 +400,7 @@ class WanderController extends ChangeNotifier {
 
     final friction = config.inertiaFriction;
     final gravity = config.inertiaGravity;
-    final bottomY = _screenHeight - windowHeight;
+    final bottomY = _screenHeight - windowHeight + config.bottomMargin;
 
     _inertiaTimer = Timer.periodic(const Duration(milliseconds: 33), (timer) {
       _velocityX *= friction;

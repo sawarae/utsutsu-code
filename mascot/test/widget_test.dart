@@ -978,7 +978,7 @@ void main() {
       expect(config.mainWidth, 424.0);
       expect(config.mainHeight, 528.0);
       expect(config.childWidth, 264.0);
-      expect(config.maxChildren, 5);
+      expect(config.maxChildren, 2);
       expect(config.wanderWidth, 190.0);
       expect(config.wanderHeight, 350.0);
       expect(config.gravity, 0.8);
@@ -1057,7 +1057,7 @@ width = 500.0
       // All other values should be defaults
       expect(config.mainHeight, 528.0);
       expect(config.bounceHeight, 6.0);
-      expect(config.maxChildren, 5);
+      expect(config.maxChildren, 2);
     });
   });
 }

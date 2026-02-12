@@ -37,6 +37,7 @@ class _MascotWidgetState extends State<MascotWidget>
     with TickerProviderStateMixin {
   static const _clickThroughChannel = MethodChannel('mascot/click_through');
   static const _nativeDragChannel = MethodChannel('mascot/native_drag');
+  static const _windowReadyChannel = MethodChannel('mascot/window_ready');
 
   // Close button position/size in logical coordinates.
   // Must match kCloseBtn* constants in flutter_window.h.
@@ -153,6 +154,8 @@ class _MascotWidgetState extends State<MascotWidget>
         });
         _syncParameters();
         _modelFadeController.forward();
+        // Signal native window to become visible (prevents yellow flash)
+        _windowReadyChannel.invokeMethod('show');
       }
     } catch (e) {
       debugPrint('Failed to load utsutsu2d model: $e');
