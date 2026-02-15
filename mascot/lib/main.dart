@@ -78,10 +78,9 @@ void main(List<String> args) async {
     backgroundColor: Colors.transparent,
     titleBarStyle:
         Platform.isWindows ? TitleBarStyle.normal : TitleBarStyle.hidden,
-    // Hide traffic light buttons in wander mode. Must be set here (not in
-    // Swift awakeFromNib) because window_manager's setTitleBarStyle
-    // force-unwraps standardWindowButton(.closeButton) superview.
-    windowButtonVisibility: !config.wander,
+    // Hide native traffic light buttons — use custom close button instead.
+    // Wander mode also hides them (child mascots are closed by parent).
+    windowButtonVisibility: false,
     skipTaskbar: false,
     alwaysOnTop: true,
   );

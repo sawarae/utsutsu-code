@@ -452,7 +452,7 @@ class _MascotWidgetState extends State<MascotWidget>
                               showTail: i == 0,
                             ),
                           ),
-                  if (io.Platform.isWindows && !_isWander)
+                  if (!_isWander)
                     Positioned(
                       top: _closeBtnTop,
                       left: _closeBtnLeft,
