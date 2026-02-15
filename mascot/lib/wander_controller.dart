@@ -295,10 +295,15 @@ class WanderController extends ChangeNotifier {
         _pauseTimer = Timer(Duration(milliseconds: pauseMs), () {
           _facingLeft = goLeft;
           _speed = _randomSpeed();
+          // Set initial non-zero speed so the first _tick() moves away from
+          // the screen edge.  Without this, _speedMultiplier stays at 0 from
+          // deceleration and _tick() re-triggers _startPause → infinite loop.
+          _speedMultiplier = 1.0 / steps;
           _isPaused = false;
 
-          // Phase 3: Accelerate over ~200ms
-          var accelStep = 0;
+          // Phase 3: Accelerate over ~200ms (starts from step 1 to match
+          // the initial _speedMultiplier set above)
+          var accelStep = 1;
           _decelerationTimer = Timer.periodic(
             const Duration(milliseconds: 33),
             (timer) {
@@ -439,6 +444,7 @@ class WanderController extends ChangeNotifier {
           (_y - bottomY).abs() < 1) {
         timer.cancel();
         _y = bottomY;
+        _speedMultiplier = 1.0; // Reset so _tick() moves immediately
         _isPaused = false;
         // Resume bounce animation and autonomous wandering
         if (!_bounceTicker.isActive) _bounceTicker.start();
