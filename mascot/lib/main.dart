@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io' show Directory, File, FileSystemEvent, Platform, Process, ProcessSignal, ProcessStartMode;
 
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -76,8 +77,9 @@ void main(List<String> args) async {
     // creates the glass region; Flutter must also set transparent background
     // so that alpha=0 pixels pass through to the DWM compositor.
     backgroundColor: Colors.transparent,
-    titleBarStyle:
-        Platform.isWindows ? TitleBarStyle.normal : TitleBarStyle.hidden,
+    // On Windows, skip setTitleBarStyle entirely to avoid DWM margin reset
+    // that breaks DwmExtendFrameIntoClientArea transparency.
+    titleBarStyle: Platform.isWindows ? null : TitleBarStyle.hidden,
     // Hide native traffic light buttons — use custom close button instead.
     // Wander mode also hides them (child mascots are closed by parent).
     windowButtonVisibility: false,
@@ -391,7 +393,7 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
       if (parentDir.existsSync()) {
         for (final entity in parentDir.listSync()) {
           if (entity is Directory) {
-            final name = entity.path.split('/').last;
+            final name = p.basename(entity.path);
             if (!name.startsWith('task-')) continue;
 
             final hasDismiss =

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:ui' show Offset;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 
 import 'package:mascot/mascot_controller.dart';
 import 'package:mascot/model_config.dart';
@@ -833,7 +834,7 @@ void main() {
       // Simulate cleanup: remove dirs with mascot_dismiss
       for (final entity in signalDir.listSync()) {
         if (entity is Directory) {
-          final name = entity.path.split('/').last;
+          final name = p.basename(entity.path);
           if (!name.startsWith('task-')) continue;
           if (File('${entity.path}/mascot_dismiss').existsSync()) {
             entity.deleteSync(recursive: true);
@@ -854,7 +855,7 @@ void main() {
 
       for (final entity in signalDir.listSync()) {
         if (entity is Directory) {
-          final name = entity.path.split('/').last;
+          final name = p.basename(entity.path);
           if (!name.startsWith('task-')) continue;
           if (!knownSignalDirs.contains(entity.path)) {
             entity.deleteSync(recursive: true);

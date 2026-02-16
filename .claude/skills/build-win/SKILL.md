@@ -36,9 +36,12 @@ Release ディレクトリにモデルを配置し、不要ファイルを除去
 ```bash
 cd mascot
 mkdir -p build/windows/x64/runner/Release/data/models/blend_shape
+mkdir -p build/windows/x64/runner/Release/data/models/blend_shape_mini
 mkdir -p build/windows/x64/runner/Release/data/config
 cp assets/models/blend_shape/emotions.toml build/windows/x64/runner/Release/data/models/blend_shape/
 cp assets/models/blend_shape/*.inp build/windows/x64/runner/Release/data/models/blend_shape/
+cp assets/models/blend_shape_mini/emotions.toml build/windows/x64/runner/Release/data/models/blend_shape_mini/
+cp assets/models/blend_shape_mini/*.inp build/windows/x64/runner/Release/data/models/blend_shape_mini/
 cp config/emotions.toml build/windows/x64/runner/Release/data/config/
 rm -f build/windows/x64/runner/Release/native_assets.json
 ```
@@ -80,6 +83,9 @@ data/
   config/
     emotions.toml
   models/blend_shape/
+    emotions.toml
+    *.inp
+  models/blend_shape_mini/
     emotions.toml
     *.inp
 ```
