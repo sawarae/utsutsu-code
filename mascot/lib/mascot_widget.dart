@@ -351,7 +351,7 @@ class _MascotWidgetState extends State<MascotWidget>
             // The character renders in the lower portion of the window
             // due to small zoom, so place bubble near the top.
             final wanderBubbleTop = _isWander
-                ? (charH * 0.02).roundToDouble()
+                ? (charH * 0.08).roundToDouble()
                 : 0.0;
 
             return FadeTransition(
