@@ -261,8 +261,9 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     );
 
     if (widget.config.wander) {
-      final windowW = widget.config.width ?? 150.0;
-      final windowH = widget.config.height ?? 350.0;
+      final wc = widget.windowConfig;
+      final windowW = widget.config.width ?? wc.wanderWidth;
+      final windowH = widget.config.height ?? wc.wanderHeight;
       _wanderController = WanderController(
         windowWidth: windowW,
         windowHeight: windowH,

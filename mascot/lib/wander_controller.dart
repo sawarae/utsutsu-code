@@ -67,6 +67,7 @@ class WanderController extends ChangeNotifier {
   // --- Collision ---
   int _tickCount = 0;
   DateTime? _lastCollisionTime;
+  DateTime? _lastDisplacementTime;
   bool _writingPosition = false;
   double _lastBroadcastX = double.nan;
   double _lastBroadcastY = double.nan;
@@ -277,6 +278,11 @@ class WanderController extends ChangeNotifier {
     _decelerationTimer?.cancel();
     _pauseTimer?.cancel();
 
+    // Immediately reverse facing so deceleration moves AWAY from the edge.
+    // Without this, _tick() keeps pushing the mascot into the edge boundary
+    // during deceleration, re-triggering _startPause in an infinite loop.
+    _facingLeft = goLeft;
+
     // Phase 1: Decelerate over ~200ms (6 steps × 33ms)
     const steps = 6;
     var step = 0;
@@ -293,7 +299,6 @@ class WanderController extends ChangeNotifier {
         // Phase 2: Brief pause (200-500ms)
         final pauseMs = 200 + _rng.nextInt(301);
         _pauseTimer = Timer(Duration(milliseconds: pauseMs), () {
-          _facingLeft = goLeft;
           _speed = _randomSpeed();
           // Set initial non-zero speed so the first _tick() moves away from
           // the screen edge.  Without this, _speedMultiplier stays at 0 from
@@ -407,6 +412,12 @@ class WanderController extends ChangeNotifier {
     final gravity = config.inertiaGravity;
     final bottomY = _screenHeight - windowHeight + config.bottomMargin;
 
+    // On some platforms (Windows), the OS may prevent the window from moving
+    // below the screen edge. Use a clamped bottomY that doesn't exceed the
+    // screen boundary so the stop condition can always be satisfied.
+    final screenBottomY = _screenHeight - windowHeight;
+    final effectiveBottomY = bottomY > screenBottomY ? screenBottomY : bottomY;
+
     _inertiaTimer = Timer.periodic(const Duration(milliseconds: 33), (timer) {
       _velocityX *= friction;
       _velocityY *= friction;
@@ -430,8 +441,8 @@ class WanderController extends ChangeNotifier {
       }
 
       // Settle at bottom
-      if (_y >= bottomY) {
-        _y = bottomY;
+      if (_y >= effectiveBottomY) {
+        _y = effectiveBottomY;
         _velocityY = 0;
       }
 
@@ -441,7 +452,7 @@ class WanderController extends ChangeNotifier {
       // Stop when velocity is negligible and at bottom
       if (_velocityX.abs() < 0.1 &&
           _velocityY.abs() < 0.1 &&
-          (_y - bottomY).abs() < 1) {
+          (_y - effectiveBottomY).abs() < 1) {
         timer.cancel();
         _y = bottomY;
         _speedMultiplier = 1.0; // Reset so _tick() moves immediately
@@ -488,7 +499,9 @@ class WanderController extends ChangeNotifier {
     try {
       for (final entity in parentDir.listSync()) {
         if (entity is! Directory) continue;
-        if (entity.path == dir) continue;
+        // Normalize path separators for comparison (Windows listSync uses
+        // backslashes but signalDir may contain forward slashes).
+        if (entity.path.replaceAll(r'\', '/') == dir.replaceAll(r'\', '/')) continue;
         final posFile = File('${entity.path}/mascot_position');
         if (!posFile.existsSync()) continue;
         posFile.readAsString().then((content) {
@@ -517,6 +530,14 @@ class WanderController extends ChangeNotifier {
     double otherW,
     double otherH,
   ) {
+    // Displacement cooldown: avoid rapid ping-pong between wall and sibling.
+    // Only displace once per collision cooldown period.
+    final now = DateTime.now();
+    if (_lastDisplacementTime != null &&
+        now.difference(_lastDisplacementTime!) < Duration(seconds: config.collisionCooldownSeconds)) {
+      return false;
+    }
+
     final myRight = _x + windowWidth;
     final myBottom = _y + windowHeight;
     final otherRight = otherX + otherW;
@@ -538,11 +559,11 @@ class WanderController extends ChangeNotifier {
       }
 
       _x = _x.clamp(0.0, _screenWidth - windowWidth);
+      _lastDisplacementTime = now;
       _updateWindowPosition();
       notifyListeners();
 
       // Fire collision callback with cooldown
-      final now = DateTime.now();
       if (_lastCollisionTime == null ||
           now.difference(_lastCollisionTime!) > Duration(seconds: config.collisionCooldownSeconds)) {
         _lastCollisionTime = now;

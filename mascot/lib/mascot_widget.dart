@@ -347,11 +347,11 @@ class _MascotWidgetState extends State<MascotWidget>
             final charH = widget.renderHeight ??
                 (_isWander ? _wander!.windowHeight.toDouble() : 528.0);
 
-            // Position bubble just above the character head in wander mode.
+            // Position bubble above the character head in wander mode.
             // The character renders in the lower portion of the window
-            // due to small zoom, so place bubble ~30% from top.
+            // due to small zoom, so place bubble near the top.
             final wanderBubbleTop = _isWander
-                ? (charH * 0.20).roundToDouble()
+                ? (charH * 0.02).roundToDouble()
                 : 0.0;
 
             return FadeTransition(
