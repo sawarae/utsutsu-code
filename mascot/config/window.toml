@@ -1,0 +1,55 @@
+# Window and behavior configuration for utsutsu-code mascot.
+# All values are optional; hardcoded defaults are used if missing.
+
+[main_window]
+width = 424.0
+height = 528.0
+
+[child_window]
+width = 264.0
+height = 528.0
+max_children = 2
+
+[wander_window]
+width = 152.0
+height = 280.0
+
+[wander.physics]
+gravity = 0.8
+bounce_damping = 0.4
+friction = 0.98
+bottom_margin = 50.0
+inertia_friction = 0.95
+inertia_gravity = 0.5
+
+[wander.animation]
+bounce_period_ms = 600
+bounce_height = 6.0
+squish_amount = 0.03
+
+[wander.behavior]
+speed_min = 0.4
+speed_max = 1.2
+reverse_delay_min_ms = 5000
+reverse_delay_max_ms = 15000
+sparkle_delay_min_ms = 8000
+sparkle_delay_max_ms = 20000
+sparkle_duration_ms = 3000
+arm_delay_min_ms = 15000
+arm_delay_max_ms = 45000
+
+[wander.collision]
+check_interval = 18
+cooldown_seconds = 5
+broadcast_threshold = 10.0
+
+[swarm]
+# Swarm overlay is used when max_children > swarm_threshold
+swarm_threshold = 0
+lod0_timeout_ms = 6000
+signal_poll_ms = 200
+click_through_interval = 0.05
+# Positive = entities render lower (compensates for transparent padding
+# below feet in the sprite; wander mode hides this by extending the
+# OS window below screen edge, but the swarm overlay cannot)
+bottom_margin = 50

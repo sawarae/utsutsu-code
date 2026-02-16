@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Directory, File, Platform, Process, ProcessStartMode;
+import 'dart:io' show Directory, File, FileSystemEvent, Platform, Process, ProcessSignal, ProcessStartMode;
 
 import 'package:flutter/material.dart';
 import 'package:screen_retriever/screen_retriever.dart';
@@ -8,17 +8,65 @@ import 'package:window_manager/window_manager.dart';
 
 import 'mascot_controller.dart';
 import 'mascot_widget.dart';
+import 'swarm/swarm_app.dart';
 import 'wander_controller.dart';
+import 'window_config.dart';
 
 void main(List<String> args) async {
   final config = _parseArgs(args);
+  final winConfig = WindowConfig.autoDetect();
 
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
 
-  // Wander mode uses a smaller window (~57% of full size)
-  final defaultWidth = config.wander ? 150.0 : 424.0;
-  final defaultHeight = config.wander ? 350.0 : 528.0;
+  // Swarm mode: fullscreen transparent overlay
+  if (config.swarm) {
+    final primaryDisplay = await screenRetriever.getPrimaryDisplay();
+    final screenSize = primaryDisplay.size;
+
+    final windowOptions = WindowOptions(
+      size: screenSize,
+      backgroundColor: Colors.transparent,
+      titleBarStyle: TitleBarStyle.hidden,
+      windowButtonVisibility: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+    );
+
+    windowManager.waitUntilReadyToShow(windowOptions, () async {
+      await windowManager.setBackgroundColor(Colors.transparent);
+      if (Platform.isMacOS) {
+        await windowManager.setClosable(false);
+        await windowManager.setMinimizable(false);
+        await windowManager.setMovable(false);
+      }
+      await windowManager.setSize(screenSize);
+      await windowManager.setPosition(Offset.zero);
+      await windowManager.show();
+    });
+
+    runApp(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        scaffoldBackgroundColor: Colors.transparent,
+        canvasColor: Colors.transparent,
+      ),
+      home: SwarmApp(
+        signalDir: config.signalDir ?? _defaultSignalDir(),
+        config: winConfig,
+        collisionEnabled: config.collision,
+        modelsDir: config.modelsDir,
+        model: config.model,
+        screenWidth: screenSize.width,
+        screenHeight: screenSize.height,
+      ),
+    ));
+    return;
+  }
+
+  // Wander mode uses a smaller window; extra width for outline dilation padding
+  final defaultWidth = config.wander ? winConfig.wanderWidth : winConfig.mainWidth;
+  final defaultHeight = config.wander ? winConfig.wanderHeight : winConfig.mainHeight;
   final windowSize =
       Size(config.width ?? defaultWidth, config.height ?? defaultHeight);
   final windowOptions = WindowOptions(
@@ -30,11 +78,10 @@ void main(List<String> args) async {
     backgroundColor: Colors.transparent,
     titleBarStyle:
         Platform.isWindows ? TitleBarStyle.normal : TitleBarStyle.hidden,
-    // Hide traffic light buttons in wander mode. Must be set here (not in
-    // Swift awakeFromNib) because window_manager's setTitleBarStyle
-    // force-unwraps standardWindowButton(.closeButton) superview.
-    windowButtonVisibility: !config.wander,
-    skipTaskbar: config.wander,
+    // Hide native traffic light buttons — use custom close button instead.
+    // Wander mode also hides them (child mascots are closed by parent).
+    windowButtonVisibility: false,
+    skipTaskbar: false,
     alwaysOnTop: true,
   );
 
@@ -53,7 +100,11 @@ void main(List<String> args) async {
       // in MascotWidget.initState
     }
 
-    if (!config.wander) {
+    if (config.wander) {
+      // Place off-screen before show() so the window isn't visible until
+      // WanderController.start() begins the drop animation.
+      await windowManager.setPosition(Offset(0, -windowSize.height * 2));
+    } else {
       // Position at bottom of screen (default: left edge)
       final primaryDisplay = await screenRetriever.getPrimaryDisplay();
       final screenSize = primaryDisplay.size;
@@ -61,12 +112,17 @@ void main(List<String> args) async {
       final y = screenSize.height - windowSize.height;
       await windowManager.setPosition(Offset(x, y));
     }
-    // Wander mode: WanderController handles positioning
 
     await windowManager.show();
   });
 
-  runApp(MascotApp(config: config));
+  runApp(MascotApp(config: config, windowConfig: winConfig));
+}
+
+String _defaultSignalDir() {
+  final home =
+      Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
+  return '$home/.claude/utsutsu-code';
 }
 
 /// Parsed CLI arguments.
@@ -79,6 +135,8 @@ class _AppConfig {
   final double? height;
   final bool wander;
   final bool outline;
+  final bool swarm;
+  final bool collision;
 
   const _AppConfig({
     this.modelsDir,
@@ -89,6 +147,8 @@ class _AppConfig {
     this.height,
     this.wander = false,
     this.outline = true,
+    this.swarm = false,
+    this.collision = true,
   });
 }
 
@@ -102,6 +162,8 @@ _AppConfig _parseArgs(List<String> args) {
   double? height;
   bool wander = false;
   bool outline = true;
+  bool swarm = false;
+  bool collision = true;
 
   for (var i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -125,6 +187,10 @@ _AppConfig _parseArgs(List<String> args) {
         outline = true;
       case '--no-outline':
         outline = false;
+      case '--swarm':
+        swarm = true;
+      case '--no-collision':
+        collision = false;
     }
   }
 
@@ -137,6 +203,8 @@ _AppConfig _parseArgs(List<String> args) {
     height: height,
     wander: wander,
     outline: outline,
+    swarm: swarm,
+    collision: collision,
   );
 }
 
@@ -157,25 +225,28 @@ class _WanderChild {
 
 class MascotApp extends StatefulWidget {
   final _AppConfig config;
+  final WindowConfig windowConfig;
 
-  const MascotApp({super.key, required this.config});
+  const MascotApp({super.key, required this.config, required this.windowConfig});
 
   @override
   State<MascotApp> createState() => _MascotAppState();
 }
 
-class _MascotAppState extends State<MascotApp> {
-  static const _mainWidth = 424.0;
-  static const _childWidth = 264.0;
-  static const _windowHeight = 528.0;
-  static const _maxChildren = 5;
+class _MascotAppState extends State<MascotApp> with WindowListener {
+  WindowConfig get _wc => widget.windowConfig;
 
   late final MascotController _controller;
   WanderController? _wanderController;
   final List<_ChildMascot> _children = [];
   final List<_WanderChild> _wanderChildren = [];
   Timer? _spawnTimer;
+  Timer? _childReaper;
+  StreamSubscription<FileSystemEvent>? _spawnWatcher;
   late final String _spawnSignalPath;
+  final List<Timer> _ttsTimers = [];
+  _WanderChild? _swarmOverlay; // Single swarm overlay process
+  bool _cleanedUp = false;
 
   @override
   void initState() {
@@ -184,6 +255,7 @@ class _MascotAppState extends State<MascotApp> {
       signalDir: widget.config.signalDir,
       modelsDir: widget.config.modelsDir,
       model: widget.config.model,
+      pollIntervalMs: widget.config.wander ? 500 : 100,
     );
 
     if (widget.config.wander) {
@@ -193,6 +265,7 @@ class _MascotAppState extends State<MascotApp> {
         windowWidth: windowW,
         windowHeight: windowH,
         signalDir: widget.config.signalDir,
+        config: widget.windowConfig,
       );
       _wanderController!.start();
     }
@@ -206,13 +279,68 @@ class _MascotAppState extends State<MascotApp> {
       _cleanStaleChildren();
     }
 
-    // Poll for child spawn signals (only in non-wander mode)
+    // Intercept macOS close button (traffic light red ×) so that dispose()
+    // cleanup actually runs before the process exits.  Without this, the OS
+    // terminates the process immediately and child wander mascots become
+    // zombies.  Only needed for the parent mascot (non-wander).
     if (!widget.config.wander) {
-      _spawnTimer = Timer.periodic(
-        const Duration(milliseconds: 200),
-        (_) => _checkSpawnSignal(),
-      );
+      windowManager.addListener(this);
+      windowManager.setPreventClose(true);
     }
+
+    // Watch for child spawn signals (only in non-wander mode)
+    if (!widget.config.wander) {
+      _startSpawnWatcher();
+      _startChildReaper();
+    }
+  }
+
+  /// Periodically check if wander child processes are still alive.
+  /// Removes dead entries from [_wanderChildren] so new spawns are allowed.
+  void _startChildReaper() {
+    _childReaper = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (_wanderChildren.isEmpty) return;
+      final before = _wanderChildren.length;
+      _wanderChildren.removeWhere((child) {
+        // killPid with SIGCONT is harmless; returns false if process is gone
+        final alive = Process.killPid(child.pid, ProcessSignal.sigcont);
+        return !alive;
+      });
+      if (_wanderChildren.length < before) {
+        _persistChildPids();
+        debugPrint('Reaped dead wander children: ${before - _wanderChildren.length} removed, ${_wanderChildren.length} remaining');
+      }
+    });
+  }
+
+  /// Use FSEvents (macOS) / inotify (Linux) to watch for spawn_child file
+  /// creation. Falls back to 200ms polling if watch() is unavailable.
+  void _startSpawnWatcher() {
+    final signalDir = widget.config.signalDir ?? _defaultSignalDir();
+    final dir = Directory(signalDir);
+    if (!dir.existsSync()) dir.createSync(recursive: true);
+    try {
+      _spawnWatcher = dir.watch(events: FileSystemEvent.create).listen((event) {
+        if (event.path.endsWith('/spawn_child')) {
+          _checkSpawnSignal();
+        }
+      }, onError: (_) {
+        // Fallback to polling on watch error
+        _spawnWatcher?.cancel();
+        _spawnWatcher = null;
+        _startSpawnPolling();
+      });
+    } catch (_) {
+      _startSpawnPolling();
+    }
+  }
+
+  void _startSpawnPolling() {
+    _spawnTimer?.cancel();
+    _spawnTimer = Timer.periodic(
+      const Duration(milliseconds: 200),
+      (_) => _checkSpawnSignal(),
+    );
   }
 
   static String _defaultSignalDir() {
@@ -222,36 +350,76 @@ class _MascotAppState extends State<MascotApp> {
   }
 
   /// Kill zombie wander children left behind by a previous parent that
-  /// crashed before its [dispose] could run.
+  /// crashed before its [dispose] could run, and clean up orphaned task dirs.
   void _cleanStaleChildren() {
     final signalDir = widget.config.signalDir ?? _defaultSignalDir();
-    final childrenFile = File('$signalDir/wander_children.json');
-    if (!childrenFile.existsSync()) return;
 
-    try {
-      final data =
-          jsonDecode(childrenFile.readAsStringSync()) as List<dynamic>;
-      for (final entry in data) {
-        final pid = entry['pid'] as int?;
-        final dir = entry['signalDir'] as String?;
-        if (pid != null) {
-          try {
-            Process.killPid(pid);
-          } catch (_) {}
+    // 1. Kill zombie wander children from wander_children.json
+    final childrenFile = File('$signalDir/wander_children.json');
+    final knownSignalDirs = <String>{};
+    if (childrenFile.existsSync()) {
+      try {
+        final data =
+            jsonDecode(childrenFile.readAsStringSync()) as List<dynamic>;
+        for (final entry in data) {
+          final pid = entry['pid'] as int?;
+          final dir = entry['signalDir'] as String?;
+          if (pid != null) {
+            try {
+              Process.killPid(pid);
+            } catch (_) {}
+          }
+          if (dir != null) {
+            knownSignalDirs.add(dir);
+            try {
+              File('$dir/mascot_dismiss').writeAsStringSync('');
+            } catch (_) {}
+          }
         }
-        if (dir != null) {
-          try {
-            File('$dir/mascot_dismiss').writeAsStringSync('');
-          } catch (_) {}
+        childrenFile.deleteSync();
+      } catch (e) {
+        debugPrint('Failed to clean stale children: $e');
+        try {
+          childrenFile.deleteSync();
+        } catch (_) {}
+      }
+    }
+
+    // 2. Clean orphaned task-* directories
+    try {
+      final parentDir = Directory(signalDir);
+      if (parentDir.existsSync()) {
+        for (final entity in parentDir.listSync()) {
+          if (entity is Directory) {
+            final name = entity.path.split('/').last;
+            if (!name.startsWith('task-')) continue;
+
+            final hasDismiss =
+                File('${entity.path}/mascot_dismiss').existsSync();
+            final isTracked = knownSignalDirs.contains(entity.path);
+
+            // Delete if dismissed or not tracked by any active wander child
+            if (hasDismiss || !isTracked) {
+              try {
+                entity.deleteSync(recursive: true);
+                debugPrint('Cleaned stale task dir: ${entity.path}');
+              } catch (_) {}
+            }
+          }
         }
       }
-      childrenFile.deleteSync();
     } catch (e) {
-      debugPrint('Failed to clean stale children: $e');
-      try {
-        childrenFile.deleteSync();
-      } catch (_) {}
+      debugPrint('Failed to clean orphaned task dirs: $e');
     }
+
+    // 3. Remove legacy _active_task_mascots tracking file
+    try {
+      final legacyFile = File('$signalDir/_active_task_mascots');
+      if (legacyFile.existsSync()) {
+        legacyFile.deleteSync();
+        debugPrint('Removed legacy _active_task_mascots file');
+      }
+    } catch (_) {}
   }
 
   /// Persist current wander child PIDs to disk so they can be cleaned up
@@ -271,7 +439,16 @@ class _MascotAppState extends State<MascotApp> {
     final file = File(_spawnSignalPath);
     if (!file.existsSync()) return;
 
-    // Atomically claim the signal file to prevent race conditions
+    // In swarm mode, don't consume the signal — just ensure the overlay
+    // is running and let it handle all spawn signals directly.
+    if (_wc.maxChildren > _wc.swarmThreshold) {
+      if (_swarmOverlay == null) {
+        _launchSwarmOverlay('blend_shape_mini');
+      }
+      return;
+    }
+
+    // Non-swarm mode: atomically claim the signal file
     final claimedPath = '${_spawnSignalPath}_processing';
     try {
       file.renameSync(claimedPath);
@@ -285,47 +462,80 @@ class _MascotAppState extends State<MascotApp> {
       claimedFile.deleteSync();
 
       final json = jsonDecode(content) as Map<String, dynamic>;
-      final signalDir = json['signal_dir'] as String;
-      final model = json['model'] as String? ?? 'blend_shape_mini';
-      final wander = json['wander'] as bool? ?? true;
 
-      // Clean any stale dismiss file
+      // Unwrap envelope v1 or use legacy format directly
+      final payload = json.containsKey('version')
+          ? (json['payload'] as Map<String, dynamic>? ?? {})
+          : json;
+      final taskId = payload['task_id'] as String;
+      final parentDir = widget.config.signalDir ?? _defaultSignalDir();
+      final signalDir = '$parentDir/task-$taskId';
+
+      // Parent creates dir (moved from hook)
+      Directory(signalDir).createSync(recursive: true);
+
+      // Parent cleans stale dismiss (moved from hook)
       final dismissFile = File('$signalDir/mascot_dismiss');
       if (dismissFile.existsSync()) dismissFile.deleteSync();
 
-      // Ensure signal dir exists
-      Directory(signalDir).createSync(recursive: true);
-
-      if (wander) {
-        _spawnWanderProcess(signalDir, model);
-      } else {
-        final controller = MascotController(
-          signalDir: signalDir,
-          modelsDir: widget.config.modelsDir,
-          model: model,
-        );
-        setState(() {
-          _children.add(_ChildMascot(
-            signalDir: signalDir,
-            controller: controller,
-          ));
-        });
-        _updateWindowSize();
-      }
+      _spawnWanderProcess(signalDir, 'blend_shape_mini');
+      _sendDelayedTts(signalDir);
     } catch (e) {
       debugPrint('Failed to spawn child mascot: $e');
     }
   }
 
+  /// Send initial TTS to a newly spawned child mascot after a short delay,
+  /// giving it time to initialize.
+  void _sendDelayedTts(String signalDir) {
+    final writeTimer = Timer(const Duration(seconds: 2), () {
+      final speakingFile = File('$signalDir/mascot_speaking');
+      try {
+        speakingFile.writeAsStringSync(
+          jsonEncode({'message': 'タスク開始します', 'emotion': 'Gentle'}),
+        );
+      } catch (_) {
+        return; // signal dir may have been cleaned up already
+      }
+      final clearTimer = Timer(const Duration(seconds: 2), () {
+        try {
+          speakingFile.deleteSync();
+        } catch (_) {}
+      });
+      _ttsTimers.add(clearTimer);
+    });
+    _ttsTimers.add(writeTimer);
+  }
+
+  void _launchSwarmOverlay(String model) {
+    final exe = Platform.resolvedExecutable;
+    final parentDir = widget.config.signalDir ?? _defaultSignalDir();
+    final args = [
+      '--swarm',
+      '--signal-dir', parentDir,
+      '--model', model,
+    ];
+    if (widget.config.modelsDir != null) {
+      args.addAll(['--models-dir', widget.config.modelsDir!]);
+    }
+    Process.start(exe, args, mode: ProcessStartMode.detached).then((process) {
+      _swarmOverlay = _WanderChild(pid: process.pid, signalDir: parentDir);
+      debugPrint('Launched swarm overlay: pid=${process.pid}');
+    }).catchError((e) {
+      debugPrint('Failed to launch swarm overlay: $e');
+    });
+  }
+
   void _spawnWanderProcess(String signalDir, String model) {
-    if (_wanderChildren.length >= _maxChildren) {
-      debugPrint('Max wander children reached ($_maxChildren), skipping spawn');
+    if (_wanderChildren.length >= _wc.maxChildren) {
+      debugPrint('Max wander children reached (${_wc.maxChildren}), skipping spawn');
       return;
     }
 
     final exe = Platform.resolvedExecutable;
     final args = [
       '--wander',
+      '--no-outline',
       '--signal-dir', signalDir,
       '--model', model,
     ];
@@ -336,7 +546,7 @@ class _MascotAppState extends State<MascotApp> {
     Process.start(exe, args, mode: ProcessStartMode.detached).then((process) {
       _wanderChildren.add(_WanderChild(pid: process.pid, signalDir: signalDir));
       _persistChildPids();
-      debugPrint('Spawned wander mascot: pid=${process.pid} (${_wanderChildren.length}/$_maxChildren)');
+      debugPrint('Spawned wander mascot: pid=${process.pid} (${_wanderChildren.length}/${_wc.maxChildren})');
     }).catchError((e) {
       debugPrint('Failed to spawn wander mascot: $e');
     });
@@ -353,13 +563,36 @@ class _MascotAppState extends State<MascotApp> {
   }
 
   Future<void> _updateWindowSize() async {
-    final width = _mainWidth + _childWidth * _children.length;
-    await windowManager.setSize(Size(width, _windowHeight));
+    final width = _wc.mainWidth + _wc.childWidth * _children.length;
+    await windowManager.setSize(Size(width, _wc.mainHeight));
   }
 
   @override
-  void dispose() {
+  void onWindowClose() async {
+    await _performCleanup();
+    await windowManager.destroy();
+  }
+
+  /// Cleanup child processes, timers, and controllers.  Guarded against
+  /// double invocation (onWindowClose runs first, then dispose may follow).
+  Future<void> _performCleanup() async {
+    if (_cleanedUp) return;
+    _cleanedUp = true;
+
     _spawnTimer?.cancel();
+    _spawnWatcher?.cancel();
+    _childReaper?.cancel();
+    for (final timer in _ttsTimers) {
+      timer.cancel();
+    }
+    _ttsTimers.clear();
+    // Kill swarm overlay process
+    if (_swarmOverlay != null) {
+      try {
+        Process.killPid(_swarmOverlay!.pid);
+      } catch (_) {}
+      _swarmOverlay = null;
+    }
     // Dismiss and kill all wander child processes
     for (final child in _wanderChildren) {
       try {
@@ -380,6 +613,12 @@ class _MascotAppState extends State<MascotApp> {
     }
     _wanderController?.dispose();
     _controller.dispose();
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    _performCleanup();
     super.dispose();
   }
 
@@ -410,8 +649,8 @@ class _MascotAppState extends State<MascotApp> {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           SizedBox(
-            width: _mainWidth,
-            height: _windowHeight,
+            width: _wc.mainWidth,
+            height: _wc.mainHeight,
             child: MascotWidget(
               controller: _controller,
               outlineEnabled: widget.config.outline,
@@ -419,8 +658,8 @@ class _MascotAppState extends State<MascotApp> {
           ),
           for (var i = 0; i < _children.length; i++)
             SizedBox(
-              width: _childWidth,
-              height: _windowHeight,
+              width: _wc.childWidth,
+              height: _wc.mainHeight,
               child: MascotWidget(
                 key: ValueKey(_children[i].signalDir),
                 controller: _children[i].controller,

@@ -10,6 +10,8 @@ import 'package:flutter/scheduler.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'window_config.dart';
+
 /// Controls the wander behaviour of a mini mascot character.
 ///
 /// Moves the window horizontally along the bottom of the screen at a gentle
@@ -20,6 +22,7 @@ class WanderController extends ChangeNotifier {
   final double windowWidth;
   final double windowHeight;
   final String? signalDir;
+  final WindowConfig config;
 
   // --- Movement state ---
   double _x = 0;
@@ -37,6 +40,9 @@ class WanderController extends ChangeNotifier {
   Timer? _decelerationTimer;
   double _speedMultiplier = 1.0;
 
+  // --- Drop entrance ---
+  Timer? _dropTimer;
+
   // --- Drag state ---
   bool _isDragging = false;
   double _velocityX = 0;
@@ -48,8 +54,6 @@ class WanderController extends ChangeNotifier {
   // --- Bounce ---
   late final Ticker _bounceTicker;
   double _bouncePhase = 0; // 0..2*pi
-  static const _bouncePeriodMs = 600;
-  static const _bounceHeight = 6.0;
 
   // --- Sparkles ---
   bool _sparklesActive = false;
@@ -62,16 +66,17 @@ class WanderController extends ChangeNotifier {
 
   // --- Collision ---
   int _tickCount = 0;
-  static const _collisionCheckInterval = 6; // every ~200ms at 30fps
   DateTime? _lastCollisionTime;
-  static const _collisionCooldown = Duration(seconds: 5);
+  bool _writingPosition = false;
+  double _lastBroadcastX = double.nan;
+  double _lastBroadcastY = double.nan;
 
   /// Called when a collision occurs (after cooldown).
   VoidCallback? onCollision;
 
   // --- Public getters ---
   bool get facingLeft => _facingLeft;
-  double get bounceOffset => _isPaused ? 0 : -_bounceHeight * sin(_bouncePhase);
+  double get bounceOffset => _isPaused ? 0 : -config.bounceHeight * sin(_bouncePhase);
   bool get sparklesActive => _sparklesActive;
   String get armState => _armState;
   bool get isPaused => _isPaused;
@@ -87,8 +92,8 @@ class WanderController extends ChangeNotifier {
   (double, double) get squishScale {
     if (_isPaused) return (1.0, 1.0);
     final t = sin(_bouncePhase);
-    final sx = 1.0 - 0.03 * t;
-    final sy = 1.0 + 0.03 * t;
+    final sx = 1.0 - config.squishAmount * t;
+    final sy = 1.0 + config.squishAmount * t;
     return (sx, sy);
   }
 
@@ -120,6 +125,7 @@ class WanderController extends ChangeNotifier {
     this.windowWidth = 150,
     this.windowHeight = 350,
     this.signalDir,
+    this.config = const WindowConfig(),
   }) : _rng = Random(seed),
        _speed = 0 {
     _speed = _randomSpeed();
@@ -137,32 +143,78 @@ class WanderController extends ChangeNotifier {
     _x = _rng.nextDouble() * (_screenWidth - windowWidth);
     _facingLeft = _rng.nextBool();
 
-    // Position the window at the bottom of the screen
-    _y = display.size.height - windowHeight;
+    // Start above the screen and drop down
+    _y = -windowHeight;
+    _isPaused = true;
     await windowManager.setPosition(Offset(_x, _y));
 
-    // Start movement timer (~30fps)
-    _moveTimer = Timer.periodic(
-      const Duration(milliseconds: 33),
-      (_) => _tick(),
-    );
+    // Drop entrance: gravity pulls the mascot to the bottom
+    _startDrop();
 
-    // Start bounce animation
-    _bounceTicker.start();
-
-    // Schedule first direction reversal
-    _scheduleReverse();
-
-    // Schedule first sparkle
+    // Schedule sparkle and arm switch immediately (visual-only, no movement)
     _scheduleSparkle();
-
-    // Schedule first arm switch
     _scheduleArmSwitch();
   }
 
+  /// Animate the mascot falling from the top of the screen with gravity
+  /// and a small bounce on landing, then start normal wandering.
+  void _startDrop() {
+    double velY = 0;
+    // Random horizontal drift: -3.0 to +3.0 px/tick, matching facing direction
+    double velX = (_rng.nextDouble() - 0.5) * 6.0;
+    _facingLeft = velX < 0;
+    final gravity = config.gravity;
+    final bounceDamping = config.bounceDamping;
+    final friction = config.friction;
+    final bottomY = _screenHeight - windowHeight + config.bottomMargin;
+    var bounceCount = 0;
+
+    _dropTimer = Timer.periodic(const Duration(milliseconds: 33), (timer) {
+      velY += gravity;
+      velX *= friction;
+      _x += velX;
+      _y += velY;
+
+      // Bounce off horizontal edges
+      if (_x <= 0) {
+        _x = 0;
+        velX = -velX * 0.5;
+      } else if (_x >= _screenWidth - windowWidth) {
+        _x = _screenWidth - windowWidth;
+        velX = -velX * 0.5;
+      }
+
+      if (_y >= bottomY) {
+        _y = bottomY;
+        velY = -velY * bounceDamping;
+        bounceCount++;
+
+        // Stop after 3 bounces or negligible velocity
+        if (bounceCount >= 3 || velY.abs() < 1.0) {
+          timer.cancel();
+          _dropTimer = null;
+          _y = bottomY;
+          _isPaused = false;
+
+          // Start normal wandering
+          _bounceTicker.start();
+          _moveTimer = Timer.periodic(
+            const Duration(milliseconds: 33),
+            (_) => _tick(),
+          );
+          _scheduleReverse();
+          notifyListeners();
+          return;
+        }
+      }
+
+      _updateWindowPosition();
+      notifyListeners();
+    });
+  }
+
   double _randomSpeed() {
-    // 0.4 to 1.2 px per tick (33ms) → 12 to 36 px/sec
-    return 0.4 + _rng.nextDouble() * 0.8;
+    return config.speedMin + _rng.nextDouble() * (config.speedMax - config.speedMin);
   }
 
   void _tick() {
@@ -186,7 +238,7 @@ class WanderController extends ChangeNotifier {
 
     // Periodically broadcast position and check collisions
     _tickCount++;
-    if (_tickCount % _collisionCheckInterval == 0) {
+    if (_tickCount % config.collisionCheckInterval == 0) {
       _broadcastPosition();
       _checkCollisions();
     }
@@ -201,8 +253,11 @@ class WanderController extends ChangeNotifier {
   }
 
   void _onBounceTick(Duration elapsed) {
-    final ms = elapsed.inMilliseconds % _bouncePeriodMs;
-    _bouncePhase = (ms / _bouncePeriodMs) * 2 * pi;
+    final ms = elapsed.inMilliseconds % config.bouncePeriodMs;
+    final newPhase = (ms / config.bouncePeriodMs) * 2 * pi;
+    // Skip notification if phase change is negligible (< ~2° visual difference)
+    if ((newPhase - _bouncePhase).abs() < 0.1) return;
+    _bouncePhase = newPhase;
     notifyListeners();
   }
 
@@ -210,8 +265,8 @@ class WanderController extends ChangeNotifier {
 
   void _scheduleReverse() {
     _reverseTimer?.cancel();
-    // 5 to 15 seconds
-    final delayMs = 5000 + _rng.nextInt(10001);
+    final delayMs = config.reverseDelayMinMs +
+        _rng.nextInt(config.reverseDelayMaxMs - config.reverseDelayMinMs + 1);
     _reverseTimer = Timer(Duration(milliseconds: delayMs), () {
       _startPause(goLeft: !_facingLeft);
     });
@@ -225,10 +280,11 @@ class WanderController extends ChangeNotifier {
     // Phase 1: Decelerate over ~200ms (6 steps × 33ms)
     const steps = 6;
     var step = 0;
-    _decelerationTimer = Timer.periodic(const Duration(milliseconds: 33), (timer) {
+    _decelerationTimer = Timer.periodic(const Duration(milliseconds: 33), (
+      timer,
+    ) {
       step++;
       _speedMultiplier = (1.0 - step / steps).clamp(0.0, 1.0);
-      notifyListeners();
       if (step >= steps) {
         timer.cancel();
         _isPaused = true;
@@ -239,20 +295,26 @@ class WanderController extends ChangeNotifier {
         _pauseTimer = Timer(Duration(milliseconds: pauseMs), () {
           _facingLeft = goLeft;
           _speed = _randomSpeed();
+          // Set initial non-zero speed so the first _tick() moves away from
+          // the screen edge.  Without this, _speedMultiplier stays at 0 from
+          // deceleration and _tick() re-triggers _startPause → infinite loop.
+          _speedMultiplier = 1.0 / steps;
           _isPaused = false;
 
-          // Phase 3: Accelerate over ~200ms
-          var accelStep = 0;
-          _decelerationTimer = Timer.periodic(const Duration(milliseconds: 33), (timer) {
-            accelStep++;
-            _speedMultiplier = (accelStep / steps).clamp(0.0, 1.0);
-            notifyListeners();
-            if (accelStep >= steps) {
-              timer.cancel();
-              _speedMultiplier = 1.0;
-              notifyListeners();
-            }
-          });
+          // Phase 3: Accelerate over ~200ms (starts from step 1 to match
+          // the initial _speedMultiplier set above)
+          var accelStep = 1;
+          _decelerationTimer = Timer.periodic(
+            const Duration(milliseconds: 33),
+            (timer) {
+              accelStep++;
+              _speedMultiplier = (accelStep / steps).clamp(0.0, 1.0);
+              if (accelStep >= steps) {
+                timer.cancel();
+                _speedMultiplier = 1.0;
+              }
+            },
+          );
 
           notifyListeners();
           _scheduleReverse();
@@ -265,15 +327,14 @@ class WanderController extends ChangeNotifier {
 
   void _scheduleSparkle() {
     _sparkleOnTimer?.cancel();
-    // 8 to 20 seconds
-    final delayMs = 8000 + _rng.nextInt(12001);
+    final delayMs = config.sparkleDelayMinMs +
+        _rng.nextInt(config.sparkleDelayMaxMs - config.sparkleDelayMinMs + 1);
     _sparkleOnTimer = Timer(Duration(milliseconds: delayMs), () {
       _sparklesActive = true;
       notifyListeners();
 
-      // Last 3 seconds
       _sparkleOffTimer?.cancel();
-      _sparkleOffTimer = Timer(const Duration(seconds: 3), () {
+      _sparkleOffTimer = Timer(Duration(milliseconds: config.sparkleDurationMs), () {
         _sparklesActive = false;
         notifyListeners();
         _scheduleSparkle();
@@ -287,6 +348,7 @@ class WanderController extends ChangeNotifier {
   void startDrag() {
     _isDragging = true;
     _dragSamples.clear();
+    _dropTimer?.cancel();
     _moveTimer?.cancel();
     _reverseTimer?.cancel();
     _pauseTimer?.cancel();
@@ -341,9 +403,9 @@ class WanderController extends ChangeNotifier {
       _facingLeft = _velocityX < 0;
     }
 
-    const friction = 0.95;
-    const gravity = 0.5;
-    final bottomY = _screenHeight - windowHeight;
+    final friction = config.inertiaFriction;
+    final gravity = config.inertiaGravity;
+    final bottomY = _screenHeight - windowHeight + config.bottomMargin;
 
     _inertiaTimer = Timer.periodic(const Duration(milliseconds: 33), (timer) {
       _velocityX *= friction;
@@ -377,9 +439,12 @@ class WanderController extends ChangeNotifier {
       notifyListeners();
 
       // Stop when velocity is negligible and at bottom
-      if (_velocityX.abs() < 0.1 && _velocityY.abs() < 0.1 && (_y - bottomY).abs() < 1) {
+      if (_velocityX.abs() < 0.1 &&
+          _velocityY.abs() < 0.1 &&
+          (_y - bottomY).abs() < 1) {
         timer.cancel();
         _y = bottomY;
+        _speedMultiplier = 1.0; // Reset so _tick() moves immediately
         _isPaused = false;
         // Resume bounce animation and autonomous wandering
         if (!_bounceTicker.isActive) _bounceTicker.start();
@@ -396,14 +461,23 @@ class WanderController extends ChangeNotifier {
   // --- Collision detection ---
 
   /// Write this mascot's position to a signal file for siblings to read.
+  /// Skips write if position hasn't changed significantly since last broadcast.
   void _broadcastPosition() {
     final dir = signalDir;
-    if (dir == null) return;
-    try {
-      File('$dir/mascot_position').writeAsStringSync(
-        '{"x":$_x,"y":$_y,"w":$windowWidth,"h":$windowHeight}',
-      );
-    } catch (_) {}
+    if (dir == null || _writingPosition) return;
+    // Skip if position hasn't moved enough
+    final dx = (_x - _lastBroadcastX).abs();
+    final dy = (_y - _lastBroadcastY).abs();
+    if (dx < config.broadcastThreshold && dy < config.broadcastThreshold) return;
+    _writingPosition = true;
+    _lastBroadcastX = _x;
+    _lastBroadcastY = _y;
+    final payload = '{"x":$_x,"y":$_y,"w":$windowWidth,"h":$windowHeight}';
+    final envelope = '{"version":"1","type":"mascot.position","payload":$payload}';
+    File('$dir/mascot_position')
+        .writeAsString(envelope)
+        .then((_) => _writingPosition = false)
+        .catchError((_) { _writingPosition = false; return File(''); });
   }
 
   /// Scan sibling signal directories for position files and resolve collisions.
@@ -417,28 +491,41 @@ class WanderController extends ChangeNotifier {
         if (entity.path == dir) continue;
         final posFile = File('${entity.path}/mascot_position');
         if (!posFile.existsSync()) continue;
-        try {
-          final data =
-              jsonDecode(posFile.readAsStringSync()) as Map<String, dynamic>;
-          resolveCollision(
-            (data['x'] as num).toDouble(),
-            (data['y'] as num).toDouble(),
-            (data['w'] as num?)?.toDouble() ?? 150,
-            (data['h'] as num?)?.toDouble() ?? 350,
-          );
-        } catch (_) {}
+        posFile.readAsString().then((content) {
+          try {
+            final json = jsonDecode(content) as Map<String, dynamic>;
+            // Unwrap envelope v1 or use legacy format directly
+            final data = json.containsKey('version')
+                ? (json['payload'] as Map<String, dynamic>? ?? {})
+                : json;
+            resolveCollision(
+              (data['x'] as num).toDouble(),
+              (data['y'] as num).toDouble(),
+              (data['w'] as num?)?.toDouble() ?? 150,
+              (data['h'] as num?)?.toDouble() ?? 350,
+            );
+          } catch (_) {}
+        }).catchError((_) {});
       }
     } catch (_) {}
   }
 
   /// Resolve collision with another mascot window (AABB).
-  bool resolveCollision(double otherX, double otherY, double otherW, double otherH) {
+  bool resolveCollision(
+    double otherX,
+    double otherY,
+    double otherW,
+    double otherH,
+  ) {
     final myRight = _x + windowWidth;
     final myBottom = _y + windowHeight;
     final otherRight = otherX + otherW;
     final otherBottom = otherY + otherH;
 
-    if (_x < otherRight && myRight > otherX && _y < otherBottom && myBottom > otherY) {
+    if (_x < otherRight &&
+        myRight > otherX &&
+        _y < otherBottom &&
+        myBottom > otherY) {
       final overlapLeft = myRight - otherX;
       final overlapRight = otherRight - _x;
 
@@ -457,7 +544,7 @@ class WanderController extends ChangeNotifier {
       // Fire collision callback with cooldown
       final now = DateTime.now();
       if (_lastCollisionTime == null ||
-          now.difference(_lastCollisionTime!) > _collisionCooldown) {
+          now.difference(_lastCollisionTime!) > Duration(seconds: config.collisionCooldownSeconds)) {
         _lastCollisionTime = now;
         onCollision?.call();
       }
@@ -471,8 +558,8 @@ class WanderController extends ChangeNotifier {
 
   void _scheduleArmSwitch() {
     _armTimer?.cancel();
-    // 15 to 45 seconds
-    final delayMs = 15000 + _rng.nextInt(30001);
+    final delayMs = config.armDelayMinMs +
+        _rng.nextInt(config.armDelayMaxMs - config.armDelayMinMs + 1);
     _armTimer = Timer(Duration(milliseconds: delayMs), () {
       final states = ['empty', 'broom', 'luggage'];
       _armState = states[_rng.nextInt(states.length)];
@@ -483,6 +570,7 @@ class WanderController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _dropTimer?.cancel();
     _moveTimer?.cancel();
     _reverseTimer?.cancel();
     _pauseTimer?.cancel();

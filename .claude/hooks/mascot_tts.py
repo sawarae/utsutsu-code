@@ -84,12 +84,16 @@ def load_config():
 
 
 def write_signal(text, emotion=None):
-    """Write the mascot speaking signal file."""
+    """Write the mascot speaking signal file (envelope format v1)."""
     os.makedirs(SIGNAL_DIR, exist_ok=True)
+    payload = {"message": text}
     if emotion:
-        signal = json.dumps({"message": text, "emotion": emotion})
-    else:
-        signal = text
+        payload["emotion"] = emotion
+    signal = json.dumps({
+        "version": "1",
+        "type": "mascot.speech",
+        "payload": payload,
+    })
     Path(SIGNAL_FILE).write_text(signal, encoding="utf-8")
 
 
@@ -399,6 +403,59 @@ class VoicevoxAdapter:
         return True
 
 
+class GenieTtsAdapter:
+    """Genie-TTS adapter for English Tsukuyomi voice (Rust binary)."""
+
+    def __init__(self, genie_root=None):
+        self.genie_root = Path(genie_root) if genie_root else None
+
+    def _binary(self):
+        return self.genie_root / "genie-tts-rs" / "target" / "release" / "genie-tts-en"
+
+    def _data_dir(self):
+        return self.genie_root / "genie-tts-rs" / "data"
+
+    def is_available(self):
+        if not self.genie_root:
+            return False
+        return self._binary().exists() and self._data_dir().exists()
+
+    def synthesize_and_play(self, text, emotion=None):
+        binary = self._binary()
+        data_dir = self._data_dir()
+
+        if not binary.exists():
+            logging.error("genie-tts-en binary not found at %s", binary)
+            return False
+
+        try:
+            write_signal(text, emotion)
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                wav_path = tmp.name
+
+            result = subprocess.run(
+                [str(binary), "--text", text, "--output", wav_path, "--data-dir", str(data_dir)],
+                timeout=30,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                logging.error("Genie-TTS failed: %s", result.stderr)
+                return False
+
+            subprocess.run(["afplay", wav_path])
+            return True
+        except subprocess.TimeoutExpired:
+            logging.error("Genie-TTS timed out")
+            return False
+        finally:
+            clear_signal()
+            try:
+                os.unlink(wav_path)
+            except Exception:
+                pass
+
+
 class NoneAdapter:
     """No-audio adapter. Only writes signal file for mascot animation."""
 
@@ -418,8 +475,18 @@ class NoneAdapter:
 # ── Engine Resolution ─────────────────────────────────────────
 
 
-def resolve_adapter(config):
+def resolve_adapter(config, lang=None):
     """Resolve TTS adapter from env, config, or auto-detect."""
+    # English: use Genie-TTS if available
+    if lang == "en":
+        genie_root = config.get("genie_tts_root")
+        if genie_root:
+            adapter = GenieTtsAdapter(genie_root=genie_root)
+            if adapter.is_available():
+                logging.info("Using Genie-TTS for English")
+                return adapter
+            logging.warning("Genie-TTS not available, falling back")
+
     engine = os.environ.get("TTS_ENGINE") or config.get("engine")
     speaker_name = os.environ.get("TTS_SPEAKER") or config.get("speaker_name")
 
@@ -464,6 +531,8 @@ def main():
     dismiss = False
     spawn = False
     spawn_model = None
+    quiet = False
+    lang = None
     argv = sys.argv[1:]
     filtered = []
     i = 0
@@ -483,6 +552,12 @@ def main():
         elif argv[i] == "--spawn-model" and i + 1 < len(argv):
             spawn_model = argv[i + 1]
             i += 2
+        elif argv[i] == "--lang" and i + 1 < len(argv):
+            lang = argv[i + 1]
+            i += 2
+        elif argv[i] == "--quiet":
+            quiet = True
+            i += 1
         else:
             filtered.append(argv[i])
             i += 1
@@ -533,6 +608,8 @@ def main():
     logging.info("TTS fired: message=%s emotion=%s", message, emotion)
 
     config = load_config()
+    if quiet:
+        config.setdefault("engine", "coeiroink")  # skip auto-detect
     result = {"status": "unknown"}
     muted = is_muted()
 
@@ -543,7 +620,7 @@ def main():
                 logging.info("TTS muted, signal-only")
                 adapter = NoneAdapter()
             else:
-                adapter = resolve_adapter(config)
+                adapter = resolve_adapter(config, lang=lang)
             engine_name = type(adapter).__name__.replace("Adapter", "").lower()
 
             if isinstance(adapter, NoneAdapter):
