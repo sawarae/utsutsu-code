@@ -348,10 +348,10 @@ class _MascotWidgetState extends State<MascotWidget>
                 (_isWander ? _wander!.windowHeight.toDouble() : 528.0);
 
             // Position bubble above the character head in wander mode.
-            // The character renders in the lower portion of the window
-            // due to small zoom, so place bubble near the top.
+            // macOS: character fills the window well → 20% from top.
+            // Windows: smaller zoom leaves more headroom → 8% from top.
             final wanderBubbleTop = _isWander
-                ? (charH * 0.08).roundToDouble()
+                ? (charH * (io.Platform.isWindows ? 0.08 : 0.20)).roundToDouble()
                 : 0.0;
 
             return FadeTransition(

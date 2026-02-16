@@ -412,11 +412,11 @@ class WanderController extends ChangeNotifier {
     final gravity = config.inertiaGravity;
     final bottomY = _screenHeight - windowHeight + config.bottomMargin;
 
-    // On some platforms (Windows), the OS may prevent the window from moving
-    // below the screen edge. Use a clamped bottomY that doesn't exceed the
-    // screen boundary so the stop condition can always be satisfied.
-    final screenBottomY = _screenHeight - windowHeight;
-    final effectiveBottomY = bottomY > screenBottomY ? screenBottomY : bottomY;
+    // On Windows, the OS prevents the window from moving below the screen
+    // edge. Use a clamped bottomY so the stop condition can be satisfied.
+    final effectiveBottomY = Platform.isWindows
+        ? (_screenHeight - windowHeight).clamp(0.0, bottomY)
+        : bottomY;
 
     _inertiaTimer = Timer.periodic(const Duration(milliseconds: 33), (timer) {
       _velocityX *= friction;
