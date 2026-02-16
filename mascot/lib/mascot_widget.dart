@@ -1,3 +1,4 @@
+import 'dart:async' show Timer;
 import 'dart:io' as io;
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -47,6 +48,7 @@ class _MascotWidgetState extends State<MascotWidget>
   static const _nativeDragChannel = MethodChannel('mascot/native_drag');
   static const _windowReadyChannel = MethodChannel('mascot/window_ready');
   static const _wanderModeChannel = MethodChannel('mascot/wander_mode');
+  static const _windowDragChannel = MethodChannel('mascot/window_drag');
 
   // Close button position/size in logical coordinates.
   // Must match kCloseBtn* constants in flutter_window.h.
@@ -114,6 +116,11 @@ class _MascotWidgetState extends State<MascotWidget>
     if (_isWander && io.Platform.isMacOS) {
       _nativeDragChannel.invokeMethod('setEnabled', false);
       _wanderModeChannel.invokeMethod('setEnabled', true);
+    }
+    // On Windows wander mode, listen for native drag events (HTCAPTION drag)
+    // to sync WanderController position and apply inertia on release.
+    if (_isWander && io.Platform.isWindows) {
+      _windowDragChannel.setMethodCallHandler(_handleWindowDrag);
     }
     // Push initial opaque regions after first frame renders
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -270,6 +277,46 @@ class _MascotWidgetState extends State<MascotWidget>
   }
 
   Map<String, double>? _lastWanderOverrides;
+
+  // Position samples for native drag velocity (Dart coordinates)
+  final List<(int, double, double)> _nativeDragSamples = [];
+  Timer? _nativeDragPollTimer;
+
+  Future<dynamic> _handleWindowDrag(MethodCall call) async {
+    final wander = _wander;
+    if (wander == null) return;
+    if (call.method == 'dragStart') {
+      wander.startDrag();
+      // Poll window position during drag for velocity in Dart coordinates
+      _nativeDragSamples.clear();
+      _nativeDragPollTimer?.cancel();
+      _nativeDragPollTimer = Timer.periodic(
+        const Duration(milliseconds: 50),
+        (_) async {
+          final pos = await windowManager.getPosition();
+          final now = DateTime.now().millisecondsSinceEpoch;
+          _nativeDragSamples.add((now, pos.dx, pos.dy));
+          if (_nativeDragSamples.length > 5) _nativeDragSamples.removeAt(0);
+        },
+      );
+    } else if (call.method == 'dragEnd') {
+      _nativeDragPollTimer?.cancel();
+      final pos = await windowManager.getPosition();
+      // Compute velocity from Dart-side position samples
+      double velX = 0, velY = 0;
+      if (_nativeDragSamples.length >= 2) {
+        final first = _nativeDragSamples.first;
+        final last = _nativeDragSamples.last;
+        final dtMs = last.$1 - first.$1;
+        if (dtMs > 0) {
+          velX = (last.$2 - first.$2) / dtMs * 1000; // px/sec
+          velY = (last.$3 - first.$3) / dtMs * 1000;
+        }
+      }
+      _nativeDragSamples.clear();
+      wander.endNativeDrag(pos.dx, pos.dy, velX, velY);
+    }
+  }
 
   void _onWanderChanged() {
     if (!mounted) return;

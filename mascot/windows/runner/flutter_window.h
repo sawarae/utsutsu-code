@@ -68,6 +68,19 @@ class FlutterWindow : public Win32Window {
   // When false, WM_NCHITTEST returns HTCLIENT instead of HTCAPTION for opaque
   // regions, allowing Flutter GestureDetector to handle drag (wander mode).
   bool drag_enabled_ = true;
+
+  // MethodChannel for notifying Dart about native window drag events.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> window_drag_channel_;
+
+  // Native drag tracking state.
+  bool in_native_drag_ = false;
+
+  // Position samples during native drag for velocity computation.
+  struct DragSample {
+    DWORD time_ms;
+    int x, y;
+  };
+  std::vector<DragSample> drag_samples_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

@@ -380,8 +380,26 @@ class WanderController extends ChangeNotifier {
     _updateWindowPosition();
   }
 
-  /// Called when drag ends. Computes velocity from recent drag samples
-  /// and applies inertia physics.
+  /// Called when a native OS drag (HTCAPTION) ends on Windows.
+  /// The OS moved the window, so we sync our position and apply inertia.
+  void endNativeDrag(double screenX, double screenY,
+      double velXPxPerSec, double velYPxPerSec) {
+    _x = screenX;
+    _y = screenY;
+    _isDragging = false;
+    _inertiaTimer?.cancel();
+    _velocityX = velXPxPerSec / 30; // px/sec to px/tick (33ms)
+    _velocityY = velYPxPerSec / 30;
+
+    if (_velocityX.abs() > 0.5) {
+      _facingLeft = _velocityX < 0;
+    }
+
+    _applyInertia();
+  }
+
+  /// Called when drag ends (macOS Flutter GestureDetector path).
+  /// Computes velocity from recent drag samples and applies inertia.
   void endDrag() {
     _isDragging = false;
     _inertiaTimer?.cancel();
@@ -394,20 +412,24 @@ class WanderController extends ChangeNotifier {
       final last = _dragSamples.last;
       final dtMs = last.$1 - first.$1;
       if (dtMs > 0) {
-        // px/sec
         computedVelX = (last.$2 - first.$2) / dtMs * 1000;
         computedVelY = (last.$3 - first.$3) / dtMs * 1000;
       }
     }
     _dragSamples.clear();
 
-    _velocityX = computedVelX / 30; // Convert px/sec to px/tick (33ms)
+    _velocityX = computedVelX / 30;
     _velocityY = computedVelY / 30;
 
     if (_velocityX.abs() > 0.5) {
       _facingLeft = _velocityX < 0;
     }
 
+    _applyInertia();
+  }
+
+  /// Shared inertia physics: gravity + friction + bounce off edges.
+  void _applyInertia() {
     final friction = config.inertiaFriction;
     final gravity = config.inertiaGravity;
     final bottomY = _screenHeight - windowHeight + config.bottomMargin;
@@ -455,9 +477,8 @@ class WanderController extends ChangeNotifier {
           (_y - effectiveBottomY).abs() < 1) {
         timer.cancel();
         _y = bottomY;
-        _speedMultiplier = 1.0; // Reset so _tick() moves immediately
+        _speedMultiplier = 1.0;
         _isPaused = false;
-        // Resume bounce animation and autonomous wandering
         if (!_bounceTicker.isActive) _bounceTicker.start();
         _moveTimer = Timer.periodic(
           const Duration(milliseconds: 33),
