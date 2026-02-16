@@ -27,7 +27,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
-  Win32Window::Size size(1280, 720);
+  // Match the final mascot window size to avoid unnecessary surface
+  // recreation during startup (window_manager resizes to this later).
+  Win32Window::Size size(424, 528);
   if (!window.Create(L"mascot", origin, size)) {
     return EXIT_FAILURE;
   }
