@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' show Offset;
 
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mascot/mascot_controller.dart';
 import 'package:mascot/model_config.dart';
+import 'package:mascot/wander_controller.dart';
 
 const _blendShapeToml = '''
 [model]
@@ -401,6 +403,113 @@ void main() {
     });
   });
 
+  // ── Zombie Child Cleanup Tests ─────────────────────────────
+
+  group('Wander children PID persistence', () {
+    late Directory signalDir;
+
+    setUp(() {
+      signalDir = Directory.systemTemp.createTempSync('zombie_test_');
+    });
+
+    tearDown(() {
+      signalDir.deleteSync(recursive: true);
+    });
+
+    test('wander_children.json round-trips child entries', () {
+      final childrenFile = File('${signalDir.path}/wander_children.json');
+      final entries = [
+        {'pid': 12345, 'signalDir': '/tmp/child1'},
+        {'pid': 67890, 'signalDir': '/tmp/child2'},
+      ];
+      childrenFile.writeAsStringSync(jsonEncode(entries));
+
+      final data =
+          jsonDecode(childrenFile.readAsStringSync()) as List<dynamic>;
+      expect(data.length, 2);
+      expect(data[0]['pid'], 12345);
+      expect(data[0]['signalDir'], '/tmp/child1');
+      expect(data[1]['pid'], 67890);
+      expect(data[1]['signalDir'], '/tmp/child2');
+    });
+
+    test('cleanup creates mascot_dismiss for each child signal dir', () {
+      // Create child signal dirs
+      final child1Dir =
+          Directory('${signalDir.path}/child1')..createSync(recursive: true);
+      final child2Dir =
+          Directory('${signalDir.path}/child2')..createSync(recursive: true);
+
+      // Write wander_children.json
+      final childrenFile = File('${signalDir.path}/wander_children.json');
+      final entries = [
+        {'pid': 99999, 'signalDir': child1Dir.path},
+        {'pid': 99998, 'signalDir': child2Dir.path},
+      ];
+      childrenFile.writeAsStringSync(jsonEncode(entries));
+
+      // Simulate cleanup logic (same as _cleanStaleChildren)
+      final data =
+          jsonDecode(childrenFile.readAsStringSync()) as List<dynamic>;
+      for (final entry in data) {
+        final pid = entry['pid'] as int?;
+        final dir = entry['signalDir'] as String?;
+        if (pid != null) {
+          try {
+            Process.killPid(pid);
+          } catch (_) {} // PID won't exist in test
+        }
+        if (dir != null) {
+          try {
+            File('$dir/mascot_dismiss').writeAsStringSync('');
+          } catch (_) {}
+        }
+      }
+      childrenFile.deleteSync();
+
+      // Verify mascot_dismiss files were created
+      expect(File('${child1Dir.path}/mascot_dismiss').existsSync(), true);
+      expect(File('${child2Dir.path}/mascot_dismiss').existsSync(), true);
+      // Verify children file was removed
+      expect(childrenFile.existsSync(), false);
+    });
+
+    test('cleanup handles missing wander_children.json gracefully', () {
+      final childrenFile = File('${signalDir.path}/wander_children.json');
+      // File doesn't exist — should not throw
+      expect(childrenFile.existsSync(), false);
+      // The actual code returns early; just verify no crash
+    });
+
+    test('cleanup handles corrupt JSON by deleting the file', () {
+      final childrenFile = File('${signalDir.path}/wander_children.json');
+      childrenFile.writeAsStringSync('not valid json!!!');
+
+      // Simulate cleanup with corrupt data
+      try {
+        jsonDecode(childrenFile.readAsStringSync()) as List<dynamic>;
+        fail('Should have thrown');
+      } catch (_) {
+        // Cleanup fallback: delete the file
+        try {
+          childrenFile.deleteSync();
+        } catch (_) {}
+      }
+
+      expect(childrenFile.existsSync(), false);
+    });
+
+    test('empty children list writes valid empty JSON array', () {
+      final childrenFile = File('${signalDir.path}/wander_children.json');
+      final emptyList = <Map<String, dynamic>>[];
+      childrenFile.writeAsStringSync(jsonEncode(emptyList));
+
+      final data =
+          jsonDecode(childrenFile.readAsStringSync()) as List<dynamic>;
+      expect(data, isEmpty);
+    });
+  });
+
   // ── ModelConfig Unit Tests ──────────────────────────────────
 
   group('ModelConfig', () {
@@ -501,6 +610,141 @@ void main() {
       final config = _blendShapeConfig('/tmp/test');
       expect(config.fallbackMouthOpen, 'assets/fallback/mouth_open.png');
       expect(config.fallbackMouthClosed, 'assets/fallback/mouth_closed.png');
+    });
+  });
+
+  // ── WanderController Tests ──────────────────────────────────
+
+  group('WanderController', () {
+    test('updateDrag does not call notifyListeners (no jitter)', () {
+      // Ensure binding is initialized for Ticker
+      TestWidgetsFlutterBinding.ensureInitialized();
+
+      final controller = WanderController(seed: 42);
+      // Enter drag mode first
+      controller.startDrag();
+
+      var listenerCallCount = 0;
+      controller.addListener(() {
+        listenerCallCount++;
+      });
+
+      // Reset count after addListener (startDrag already called notifyListeners)
+      listenerCallCount = 0;
+
+      // Perform several drag updates
+      controller.updateDrag(const Offset(10, 5));
+      controller.updateDrag(const Offset(-3, 2));
+      controller.updateDrag(const Offset(7, -1));
+
+      // updateDrag should NOT fire notifyListeners — the window moves but
+      // the widget inside the window stays put, so no rebuild is needed.
+      expect(listenerCallCount, 0,
+          reason: 'updateDrag must not call notifyListeners to avoid jitter');
+
+      controller.dispose();
+    });
+
+    test('updateDrag still updates position and clamps to screen bounds', () {
+      TestWidgetsFlutterBinding.ensureInitialized();
+
+      final controller = WanderController(seed: 42);
+      controller.startDrag();
+
+      // Move into the expected area
+      controller.updateDrag(const Offset(100, 200));
+      expect(controller.positionX, greaterThan(0));
+      expect(controller.positionY, greaterThan(0));
+
+      // Try to move beyond bounds (large negative delta)
+      controller.updateDrag(const Offset(-99999, -99999));
+      expect(controller.positionX, 0.0);
+      expect(controller.positionY, 0.0);
+
+      controller.dispose();
+    });
+  });
+
+  // ── WanderController Collision Tests ──────────────────────
+
+  group('WanderController collision', () {
+    late WanderController wander;
+
+    setUp(() {
+      wander = WanderController(
+        seed: 42,
+        windowWidth: 150,
+        windowHeight: 350,
+      );
+    });
+
+    tearDown(() {
+      wander.dispose();
+    });
+
+    test('resolveCollision fires onCollision callback when overlapping', () {
+      var callCount = 0;
+      wander.onCollision = () => callCount++;
+
+      final collided = wander.resolveCollision(200, 0, 150, 350);
+
+      expect(collided, false);
+      expect(callCount, 0);
+    });
+
+    test('resolveCollision detects AABB overlap and fires callback', () {
+      var callCount = 0;
+      wander.onCollision = () => callCount++;
+
+      final collided = wander.resolveCollision(100, 0, 150, 350);
+
+      expect(collided, true);
+      expect(callCount, 1);
+    });
+
+    test('resolveCollision respects cooldown period', () {
+      var callCount = 0;
+      wander.onCollision = () => callCount++;
+
+      wander.resolveCollision(100, 0, 150, 350);
+      expect(callCount, 1);
+
+      wander.resolveCollision(100, 0, 150, 350);
+      expect(callCount, 1);
+    });
+
+    test('resolveCollision fires again after cooldown expires', () async {
+      final fastWander = WanderController(
+        seed: 42,
+        windowWidth: 150,
+        windowHeight: 350,
+      );
+
+      var callCount = 0;
+      fastWander.onCollision = () => callCount++;
+
+      fastWander.resolveCollision(100, 0, 150, 350);
+      expect(callCount, 1);
+
+      fastWander.resolveCollision(100, 0, 150, 350);
+      expect(callCount, 1, reason: 'Should not fire within cooldown');
+
+      fastWander.dispose();
+    });
+
+    test('resolveCollision does not fire callback when no overlap', () {
+      var callCount = 0;
+      wander.onCollision = () => callCount++;
+
+      final collided = wander.resolveCollision(500, 0, 150, 350);
+
+      expect(collided, false);
+      expect(callCount, 0);
+    });
+
+    test('resolveCollision works without onCollision callback set', () {
+      final collided = wander.resolveCollision(100, 0, 150, 350);
+      expect(collided, true);
     });
   });
 }

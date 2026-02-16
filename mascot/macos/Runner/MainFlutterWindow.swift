@@ -6,6 +6,10 @@ class MainFlutterWindow: NSWindow {
   private var isDragging = false
   private var dragOrigin: NSPoint = .zero
   private var windowOriginAtDrag: NSPoint = .zero
+  /// When false, left-mouse drags are forwarded to Flutter instead of
+  /// moving the window natively. Wander mode disables native drag so
+  /// that Flutter's GestureDetector can handle drag-to-throw.
+  private var nativeDragEnabled = true
 
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
@@ -23,6 +27,22 @@ class MainFlutterWindow: NSWindow {
     self.styleMask.insert(.fullSizeContentView)
     self.isMovableByWindowBackground = false
 
+    // Method channel to toggle native drag from Flutter
+    let channel = FlutterMethodChannel(
+      name: "mascot/native_drag",
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
+    channel.setMethodCallHandler { [weak self] call, result in
+      if call.method == "setEnabled" {
+        if let enabled = call.arguments as? Bool {
+          self?.nativeDragEnabled = enabled
+        }
+        result(nil)
+      } else {
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
     RegisterGeneratedPlugins(registry: flutterViewController)
 
     super.awakeFromNib()
@@ -33,27 +53,29 @@ class MainFlutterWindow: NSWindow {
   // MARK: - Native window dragging via sendEvent
 
   override func sendEvent(_ event: NSEvent) {
-    switch event.type {
-    case .leftMouseDown:
-      if !self.ignoresMouseEvents {
-        isDragging = true
-        dragOrigin = NSEvent.mouseLocation
-        windowOriginAtDrag = self.frame.origin
+    if nativeDragEnabled {
+      switch event.type {
+      case .leftMouseDown:
+        if !self.ignoresMouseEvents {
+          isDragging = true
+          dragOrigin = NSEvent.mouseLocation
+          windowOriginAtDrag = self.frame.origin
+        }
+      case .leftMouseDragged:
+        if isDragging {
+          let current = NSEvent.mouseLocation
+          let newOrigin = NSPoint(
+            x: windowOriginAtDrag.x + (current.x - dragOrigin.x),
+            y: windowOriginAtDrag.y + (current.y - dragOrigin.y)
+          )
+          self.setFrameOrigin(newOrigin)
+          return  // Handle natively, don't pass to Flutter
+        }
+      case .leftMouseUp:
+        isDragging = false
+      default:
+        break
       }
-    case .leftMouseDragged:
-      if isDragging {
-        let current = NSEvent.mouseLocation
-        let newOrigin = NSPoint(
-          x: windowOriginAtDrag.x + (current.x - dragOrigin.x),
-          y: windowOriginAtDrag.y + (current.y - dragOrigin.y)
-        )
-        self.setFrameOrigin(newOrigin)
-        return  // Handle natively, don't pass to Flutter
-      }
-    case .leftMouseUp:
-      isDragging = false
-    default:
-      break
     }
     super.sendEvent(event)
   }

@@ -1,12 +1,24 @@
 {
   "hooks": {
-    "Stop": [
+    "PreToolUse": [
       {
-        "matcher": "",
+        "matcher": "Task",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/mascot_tts.py --emotion Joy \"タスク完了しました\"",
+            "command": "bash .claude/hooks/task-spawn.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/task-dismiss.sh",
             "timeout": 5000
           }
         ]

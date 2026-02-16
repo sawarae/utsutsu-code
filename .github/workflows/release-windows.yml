@@ -1,0 +1,84 @@
+name: Release Windows Build
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.38.x"
+          cache: true
+
+      - name: Install dependencies
+        working-directory: mascot
+        run: flutter pub get
+
+      - name: Download model files
+        working-directory: mascot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p assets/models/blend_shape
+          gh release download v0.01 \
+            --repo sawarae/utsutsu2d \
+            --dir assets/models/blend_shape \
+            --pattern '*.inp' \
+            --clobber
+
+      - name: Build Windows release
+        working-directory: mascot
+        run: flutter build windows --release
+
+      - name: Copy model and config files to build output
+        working-directory: mascot
+        run: |
+          mkdir -p build/windows/x64/runner/Release/data/models/blend_shape
+          mkdir -p build/windows/x64/runner/Release/data/config
+          cp assets/models/blend_shape/emotions.toml \
+             build/windows/x64/runner/Release/data/models/blend_shape/
+          cp assets/models/blend_shape/*.inp \
+             build/windows/x64/runner/Release/data/models/blend_shape/
+          cp config/emotions.toml \
+             build/windows/x64/runner/Release/data/config/
+          rm -f build/windows/x64/runner/Release/native_assets.json
+
+      - name: Create zip archive
+        working-directory: mascot
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path 'build\windows\x64\runner\Release\*' `
+            -DestinationPath 'build\utsutsu-code-windows.zip' `
+            -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: utsutsu-code-windows
+          path: mascot/build/utsutsu-code-windows.zip
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: mascot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            build/utsutsu-code-windows.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes

@@ -1,0 +1,28 @@
+name: utsutsu_code
+description: "Desktop mascot with lip-sync animation for AI coding assistants."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  kokoro2d:
+    git:
+      url: https://github.com/sawarae/kokoro2d
+      ref: claude/dev
+  screen_retriever: ^0.1.9
+  window_manager: ^0.3.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

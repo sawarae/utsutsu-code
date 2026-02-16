@@ -10,6 +10,17 @@ user_invocable: true
 
 マスコットアプリ、TTS関連のプロセス・シグナルファイル・ビルド成果物・グローバルフックを掃除する。
 
+## プラットフォーム判定
+
+最初にプラットフォームを判定し、以降のコマンドを分岐する:
+```bash
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) echo "WINDOWS" ;;
+  Darwin*)              echo "MACOS" ;;
+  *)                    echo "LINUX" ;;
+esac
+```
+
 ## 引数
 
 - 省略時: ユーザーに何を掃除するか聞く
@@ -23,7 +34,9 @@ user_invocable: true
 
 ### Step 1: マスコットプロセスの停止
 
-実行中のマスコットアプリを確認し、停止するか聞く:
+実行中のマスコットアプリを確認し、停止するか聞く。
+
+**macOS / Linux:**
 ```bash
 pgrep -f "utsutsu_code" && echo "RUNNING" || echo "NOT_RUNNING"
 ```
@@ -33,9 +46,31 @@ pgrep -f "utsutsu_code" && echo "RUNNING" || echo "NOT_RUNNING"
 pkill -f "utsutsu_code"
 ```
 
+**Windows:**
+```bash
+powershell -c "if (Get-Process mascot -ErrorAction SilentlyContinue) { 'RUNNING' } else { 'NOT_RUNNING' }"
+```
+
+停止する場合:
+```bash
+powershell -c "Stop-Process -Name mascot -Force -ErrorAction SilentlyContinue"
+```
+
 `flutter run` が動いている場合も確認:
+
+**macOS / Linux:**
 ```bash
 pgrep -f "flutter run" && echo "FLUTTER_RUN_ACTIVE" || echo "NOT_RUNNING"
+```
+
+**Windows:**
+```bash
+powershell -c "if (Get-Process dart -ErrorAction SilentlyContinue) { 'FLUTTER_RUN_ACTIVE' } else { 'NOT_RUNNING' }"
+```
+
+停止する場合:
+```bash
+powershell -c "Stop-Process -Name dart -Force -ErrorAction SilentlyContinue"
 ```
 
 ### Step 2: シグナルファイルの削除
@@ -54,9 +89,16 @@ rm -f ~/.claude/utsutsu-code/mascot_listening
 
 ### Step 3: ビルド成果物の削除
 
-ユーザーに確認してから削除する:
+ユーザーに確認してから削除する。
+
+**macOS / Linux:**
 ```bash
 du -sh mascot/build 2>/dev/null || echo "NO_BUILD"
+```
+
+**Windows:**
+```bash
+ls -d mascot/build 2>/dev/null && echo "HAS_BUILD" || echo "NO_BUILD"
 ```
 
 削除する場合:
@@ -66,7 +108,7 @@ rm -rf mascot/build
 
 ### Step 4: ダウンロード済みアセットの削除
 
-ユーザーに確認してから削除する（再ダウンロードに `make setup` が必要になる）:
+ユーザーに確認してから削除する（再ダウンロードに `make setup`（macOS）またはスキルの手動コマンド（Windows）が必要になる）:
 ```bash
 ls mascot/assets/models/blend_shape/model.inp 2>/dev/null && echo "HAS_MODEL"
 ls mascot/assets/fallback/mouth_open.png 2>/dev/null && echo "HAS_FALLBACK"
@@ -79,9 +121,9 @@ rm -f mascot/assets/models/parts/model.inp
 rm -f mascot/assets/fallback/*.png
 ```
 
-### Step 5: グローバルシンボリックリンクの削除
+### Step 5: グローバルフック/コピーの削除
 
-`~/.claude/` のシンボリックリンクを削除する:
+`~/.claude/` のフックとスキルを削除する:
 ```bash
 # フック
 ls -la ~/.claude/hooks/mascot_tts.py 2>/dev/null
@@ -97,14 +139,14 @@ ls -la ~/.claude/skills/ 2>/dev/null
 rm -f ~/.claude/hooks/mascot_tts.py
 rm -f ~/.claude/hooks/tts_config.toml
 
-# スキル（シンボリックリンクのみ削除、プロジェクト内の正のソースは残る）
-rm -f ~/.claude/skills/tsukuyomi-setup
-rm -f ~/.claude/skills/tsukuyomi-cleanup
-rm -f ~/.claude/skills/tts
-rm -f ~/.claude/skills/tts-debug
+# スキル（グローバルにコピーされた tts, mute を削除。プロジェクト内の正のソースは残る）
+rm -rf ~/.claude/skills/tts
+rm -rf ~/.claude/skills/mute
 ```
 
-**注意:** フック削除でStop hookのTTS通知が動かなくなる。スキル削除で他プロジェクトからの `/tsukuyomi-setup` 等が使えなくなる。再セットアップには `/tsukuyomi-setup` を使う。
+**注意:** フック削除でStop hookのTTS通知が動かなくなる。スキル削除で他プロジェクトからの `/tts` `/mute` が使えなくなる。再セットアップには `/tsukuyomi-setup` を使う。
+
+**重要:** グローバルフック削除後、Stop hookがエラーを出し続ける。クリーンアップ完了時に「**Stop hookのエラーを止めるため、Claude Codeを再起動してください**」とユーザーに案内すること。
 
 ### Step 6: ローカル設定ファイルの削除
 
@@ -131,9 +173,9 @@ grep -q "mascot_tts.py" ~/.claude/CLAUDE.md 2>/dev/null && echo "HAS_TTS_CONFIG"
 
 **重要:** `~/.claude/CLAUDE.md` はユーザーのプライベート設定なので、勝手に書き換えず案内のみ行う。再セットアップ時は `/tsukuyomi-setup` の Step 9 で再追記を案内する。
 
-## Makefile ターゲット
+## Makefile ターゲット（macOS / Linux のみ）
 
-`mascot/Makefile` にクリーンアップターゲットがある。スキル実行時はこれらを使う:
+`mascot/Makefile` にクリーンアップターゲットがある。macOS/Linux ではスキル実行時にこれらを使える:
 
 | ターゲット | 内容 |
 |-----------|------|
@@ -142,6 +184,8 @@ grep -q "mascot_tts.py" ~/.claude/CLAUDE.md 2>/dev/null && echo "HAS_TTS_CONFIG"
 | `make clean-signal` | シグナルファイルのみ削除 |
 | `make clean-assets` | モデル・画像を削除（要 `make setup` で再取得） |
 | `make clean-hooks` | グローバルフックのリンク削除（要 `/tsukuyomi-setup` で再作成） |
+
+**Windows:** `make` が使えないため、各ステップのコマンドを直接実行する。
 
 ## 確認ルール
 
@@ -152,5 +196,7 @@ grep -q "mascot_tts.py" ~/.claude/CLAUDE.md 2>/dev/null && echo "HAS_TTS_CONFIG"
 
 ## 関連スキル
 
+- `/mascot-run` — マスコットアプリ起動
 - `/tsukuyomi-setup` — 再セットアップ
+- `/mascot-run` — マスコットアプリ起動
 - `/tts-debug` — TTS問題の診断

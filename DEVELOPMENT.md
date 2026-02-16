@@ -1,3 +1,5 @@
+# 開発ガイド
+
 ## 機能
 
 - **utsutsu2dレンダリング**: `.inp`パペットモデルの読み込み（ブレンドシェイプ/パーツベースアニメーション対応）
@@ -24,7 +26,7 @@
 
 ## 感情システム
 
-感情は`mascot/emotions.toml`および各モデルの`emotions.toml`で定義:
+感情は`mascot/config/emotions.toml`および各モデルの`emotions.toml`で定義:
 
 | キー | 説明 | 用途 |
 |------|------|------|
@@ -61,7 +63,7 @@ cp .claude/hooks/tts_config.example.toml .claude/hooks/tts_config.toml
 2. 設定例をコピー: `cp mascot/config/examples/blend_shape.toml mascot/assets/models/your_character/emotions.toml`
 3. `emotions.toml`をモデルのパラメータ名と値に編集
 4. ディレクトリに`model.inp`ファイルを配置
-5. `cd mascot && MASCOT_MODEL=your_character flutter run -d macos`で起動
+5. `cd mascot && MASCOT_MODEL=your_character flutter run -d macos` (macOS) または `flutter run -d windows` (Windows) で起動
 
 ## プロジェクト構成
 
@@ -73,10 +75,14 @@ mascot/
     mascot_controller.dart # シグナルファイルポーリング、感情状態、口パクアニメーション
     model_config.dart      # TOMLベースのモデル設定
     toml_parser.dart       # 軽量TOMLパーサー
-  config/examples/         # モデルタイプ別の感情設定例
-  emotions.toml            # 感情キーの正規定義
+  config/
+    emotions.toml          # 感情キー定義・フレーズ・俳句プロンプト
+    examples/              # モデルタイプ別の感情設定例
   macos/Runner/
-    MainFlutterWindow.swift  # 透過、クリックスルー、ネイティブドラッグ
+    MainFlutterWindow.swift  # 透過、クリックスルー、ネイティブドラッグ (macOS)
+  windows/runner/
+    flutter_window.cpp/.h    # 透過、クリックスルー、ネイティブドラッグ (Windows)
+    win32_window.cpp/.h      # ボーダーレスウィンドウ (Windows)
 .claude/
   hooks/
     mascot_tts.py          # 汎用TTSディスパッチャ
@@ -84,6 +90,32 @@ mascot/
   skills/                  # Claude Codeスキル定義
 README.md
 ```
+
+## Windows 開発
+
+### 前提条件
+
+- Flutter SDK 3.10+
+- Visual Studio 2022 (C++ デスクトップ開発ワークロード)
+- Python 3
+
+### 起動
+
+```bash
+cd mascot && flutter run -d windows
+```
+
+### ネイティブ実装
+
+Windows版の透過ウィンドウは `mascot/windows/runner/` で実装:
+
+- **flutter_window.cpp**: DWM透過設定、50msポーリングによるクリックスルー判定（`PrintWindow` + DIBセクションでアルファ値を読み取り）、ネイティブドラッグ
+- **win32_window.cpp**: `WS_POPUP` + `WS_EX_LAYERED` によるボーダーレス透過ウィンドウ
+
+### COEIROINK / VOICEVOX
+
+Windows版でも macOS と同じく COEIROINK v2 または VOICEVOX を使用可能。
+音声再生は PowerShell 経由で `System.Media.SoundPlayer` を使用。
 
 ## Claude Codeスキル
 
@@ -126,6 +158,152 @@ make setup          # モデル + フォールバック画像のダウンロー�
 make clean          # ビルド + シグナル削除（安全）
 make clean-assets   # モデル・画像を削除
 make clean-hooks    # グローバルフックのリンク削除
+```
+
+## CI / リリース
+
+### GitHub Actions (`release-windows.yml`)
+
+`v*` タグの push で Windows ビルドと GitHub Release 作成を自動実行する。
+
+**トリガー:**
+- `v*` タグ push → ビルド + GitHub Release 作成
+- `workflow_dispatch` → ビルド + artifact のみ（手動テスト用）
+
+**ステップ:**
+1. Flutter セットアップ (3.38.x, キャッシュ有効)
+2. `flutter pub get`
+3. `gh release download` でモデルファイル (.inp) を取得
+4. `flutter build windows --release`
+5. モデルファイルをビルド出力にコピー
+6. `Compress-Archive` で zip 作成
+7. `upload-artifact` で成果物を保存
+8. タグ push 時のみ `gh release create --generate-notes`
+
+**リリース手順:**
+
+```bash
+git tag v0.xx
+git push origin v0.xx
+```
+
+成果物は https://github.com/sawarae/utsutsu-code/releases に公開される。
+
+## マルチマスコット（サブエージェント連携）
+
+Claude Codeのエージェントを親マスコットと子マスコットに対応させて管理する機能。
+
+### アーキテクチャ
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ Claude Code セッション                                    │
+│                                                          │
+│  ┌──────────────┐    Task tool    ┌──────────────────┐   │
+│  │  親エージェント │──────────────→│  サブエージェント    │   │
+│  └──────┬───────┘               └────────┬─────────┘   │
+│         │                                │              │
+│    PreToolUse                       PostToolUse         │
+│    (task-spawn)                    (task-dismiss)       │
+│         │                                │              │
+└─────────┼────────────────────────────────┼──────────────┘
+          │                                │
+          ▼                                ▼
+┌─────────────────────────────────────────────────────────┐
+│ シグナルファイル (~/.claude/utsutsu-code/)                  │
+│                                                          │
+│  spawn_child ──→ 親マスコットが読み取り、子プロセスを起動     │
+│                                                          │
+│  task-{uuid}/                                            │
+│    mascot_speaking ──→ 子マスコットの口パク・吹き出し        │
+│    mascot_dismiss  ──→ 子マスコット終了トリガー              │
+│                                                          │
+│  _active_task_mascots ──→ 起動中の子マスコット追跡           │
+└─────────────────────────────────────────────────────────┘
+          │                                │
+          ▼                                ▼
+┌──────────────────┐              ┌──────────────────┐
+│  親マスコット       │              │  子マスコット       │
+│  (flutter debug)  │              │  (wander mode)   │
+│  424×528px        │              │  150×300px        │
+│  画面左下固定       │              │  画面下部を徘徊     │
+│  信号Dir: 親       │              │  信号Dir: task-{n} │
+└──────────────────┘              └──────────────────┘
+```
+
+### ライフサイクル
+
+```
+1. Task tool 呼び出し
+   │
+   ├─ [PreToolUse hook] task_spawn_hook.py
+   │   ├─ signal dir 作成: ~/.claude/utsutsu-code/task-{uuid}/
+   │   ├─ spawn_child シグナル書き込み → 親マスコットが検出
+   │   ├─ _active_task_mascots に追記
+   │   ├─ prompt に --signal-dir 注入
+   │   └─ 2秒後に「タスク開始します」TTS送信（バックグラウンド）
+   │
+   ├─ [親マスコット] spawn_child を検出
+   │   ├─ wander: true → Process.start(--wander --signal-dir ...)
+   │   └─ 子マスコットが独立プロセスとして起動（段ボール持ち、画面下を徘徊）
+   │
+   ├─ [サブエージェント実行中]
+   │   └─ python3 mascot_tts.py --signal-dir task-{uuid}/ --emotion KEY "msg"
+   │       → 子マスコットだけに表示される
+   │
+   └─ [PostToolUse hook] task_dismiss_hook.py
+       ├─ _active_task_mascots から最後のエントリを削除
+       └─ mascot_dismiss シグナル書き込み → 子マスコットが終了
+```
+
+### 開発フロー図
+
+```
+開発者: /develop 10
+    │
+    ├─ 親マスコット「実装を始めます」(Gentle)
+    │
+    ├─ Task(subagent_type="Bash", prompt="...")
+    │   │
+    │   ├─ [自動] 子マスコット#0 スポーン 🎒（段ボール持ち徘徊）
+    │   ├─ [自動] 子#0「タスク開始します」(Gentle)
+    │   │
+    │   ├─ サブエージェント作業中...
+    │   │   └─ 子#0「テスト実行中」(Gentle)
+    │   │
+    │   ├─ サブエージェント完了
+    │   │   └─ 子#0「完了しました」(Joy)
+    │   │
+    │   └─ [自動] 子マスコット#0 ディスミス（ポップアニメーション → exit）
+    │
+    ├─ Task(subagent_type="Bash", prompt="...")  ← 並列も可
+    │   └─ [自動] 子マスコット#1 スポーン → 作業 → ディスミス
+    │
+    └─ 親マスコット「実装完了しました」(Joy)
+```
+
+### フックファイル
+
+| ファイル | タイミング | 役割 |
+|---------|-----------|------|
+| `.claude/hooks/task-spawn.sh` | PreToolUse(Task) | task_spawn_hook.py を呼び出す |
+| `.claude/hooks/task_spawn_hook.py` | PreToolUse(Task) | スポーン + prompt注入 + 初回TTS |
+| `.claude/hooks/task-dismiss.sh` | PostToolUse(Task) | task_dismiss_hook.py を呼び出す |
+| `.claude/hooks/task_dismiss_hook.py` | PostToolUse(Task) | ディスミス + トラッキング削除 |
+
+### 設定 (`.claude/settings.json`)
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Task", "hooks": [{ "type": "command", "command": "task-spawn.sh" }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Task", "hooks": [{ "type": "command", "command": "task-dismiss.sh" }] }
+    ]
+  }
+}
 ```
 
 ## テスト

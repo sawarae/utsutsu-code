@@ -72,8 +72,8 @@ TTS_ENGINE=none python3 .claude/hooks/mascot_tts.py --emotion Gentle "テスト�
    - Configure `speaker_name` in `.claude/hooks/tts_config.toml`
 
 3. **No audio playback**
-   - Check macOS volume settings
-   - Verify `afplay` is available: `which afplay`
+   - macOS: Check volume settings, verify `afplay` is available: `which afplay`
+   - Windows: `mascot_tts.py` uses PowerShell `System.Media.SoundPlayer` (no extra tools needed). Check volume settings
 
 4. **Check logs**
    ```bash
@@ -86,7 +86,7 @@ TTS_ENGINE=none python3 .claude/hooks/mascot_tts.py --emotion Gentle "テスト�
 
 ## Notes
 
-- Falls back to osascript notification when no TTS engine is available
+- Falls back to platform-native notification when no TTS engine is available (osascript on macOS, PowerShell balloon tip on Windows)
 - Uses stdlib only (no pip dependencies)
 - Supports auto-detection: tries COEIROINK → VOICEVOX → signal-only
 - Configure via `.claude/hooks/tts_config.toml` or `TTS_ENGINE` / `TTS_SPEAKER` env vars
@@ -95,4 +95,5 @@ TTS_ENGINE=none python3 .claude/hooks/mascot_tts.py --emotion Gentle "テスト�
 
 - `/tsukuyomi-setup` — Full setup
 - `/tsukuyomi-cleanup` — Cleanup
+- `/mascot-run` — Launch mascot app
 - `/tts` — Manual TTS execution

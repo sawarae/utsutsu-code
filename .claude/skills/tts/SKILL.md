@@ -19,7 +19,7 @@ When called without arguments, automatically select an appropriate message and e
 
 ## Emotion Keys
 
-See `mascot/emotions.toml` for the canonical reference:
+See `mascot/config/emotions.toml` for the canonical reference:
 
 | Key | Meaning | When to use |
 |-----|---------|-------------|
@@ -61,4 +61,5 @@ python3 ~/.claude/hooks/mascot_tts.py --emotion KEY "message"
 
 - `/tsukuyomi-setup` — Full setup
 - `/tsukuyomi-cleanup` — Cleanup
+- `/mascot-run` — Launch mascot app
 - `/tts-debug` — Troubleshooting
