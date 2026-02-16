@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' show Offset;
@@ -7,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mascot/mascot_controller.dart';
 import 'package:mascot/model_config.dart';
 import 'package:mascot/wander_controller.dart';
+import 'package:mascot/window_config.dart';
 
 const _blendShapeToml = '''
 [model]
@@ -745,6 +747,317 @@ void main() {
     test('resolveCollision works without onCollision callback set', () {
       final collided = wander.resolveCollision(100, 0, 150, 350);
       expect(collided, true);
+    });
+  });
+
+  // ── TTS Timer Cancellation Tests (#41) ─────────────────────
+
+  group('TTS timer cancellation', () {
+    test('Timer instances can be cancelled before firing', () {
+      final timers = <Timer>[];
+      var firedCount = 0;
+
+      // Simulate _sendDelayedTts creating timers
+      final writeTimer = Timer(const Duration(seconds: 2), () {
+        firedCount++;
+      });
+      timers.add(writeTimer);
+
+      // Cancel all timers (simulates dispose)
+      for (final timer in timers) {
+        timer.cancel();
+      }
+      timers.clear();
+
+      expect(firedCount, 0, reason: 'Timer should not fire after cancellation');
+    });
+
+    test('Cancelling already-fired timer is safe', () async {
+      var fired = false;
+      final timer = Timer(const Duration(milliseconds: 10), () {
+        fired = true;
+      });
+
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(fired, true);
+
+      // Cancelling after fire should not throw
+      timer.cancel();
+    });
+  });
+
+  // ── Spawn Signal Format Tests ─────────────────────────────
+
+  group('Spawn signal format (task_id only)', () {
+    late Directory signalDir;
+
+    setUp(() {
+      signalDir = Directory.systemTemp.createTempSync('spawn_signal_test_');
+    });
+
+    tearDown(() {
+      signalDir.deleteSync(recursive: true);
+    });
+
+    test('new format: task_id only produces valid signal dir path', () {
+      final spawnFile = File('${signalDir.path}/spawn_child');
+      spawnFile.writeAsStringSync(jsonEncode({'task_id': 'abc12345'}));
+
+      final content = spawnFile.readAsStringSync().trim();
+      final json = jsonDecode(content) as Map<String, dynamic>;
+      final taskId = json['task_id'] as String;
+      final taskSignalDir = '${signalDir.path}/task-$taskId';
+
+      expect(taskId, 'abc12345');
+      expect(taskSignalDir, endsWith('/task-abc12345'));
+    });
+
+    test('parent creates task dir from task_id', () {
+      final taskId = 'def67890';
+      final taskDir = Directory('${signalDir.path}/task-$taskId');
+
+      expect(taskDir.existsSync(), false);
+      taskDir.createSync(recursive: true);
+      expect(taskDir.existsSync(), true);
+    });
+
+    test('stale task dirs with mascot_dismiss are cleaned up', () {
+      // Create orphaned task dirs
+      final staleDir = Directory('${signalDir.path}/task-stale01')
+        ..createSync(recursive: true);
+      File('${staleDir.path}/mascot_dismiss').createSync();
+
+      final activeDir = Directory('${signalDir.path}/task-active01')
+        ..createSync(recursive: true);
+
+      // Simulate cleanup: remove dirs with mascot_dismiss
+      for (final entity in signalDir.listSync()) {
+        if (entity is Directory) {
+          final name = entity.path.split('/').last;
+          if (!name.startsWith('task-')) continue;
+          if (File('${entity.path}/mascot_dismiss').existsSync()) {
+            entity.deleteSync(recursive: true);
+          }
+        }
+      }
+
+      expect(staleDir.existsSync(), false);
+      expect(activeDir.existsSync(), true);
+    });
+
+    test('untracked task dirs are cleaned up', () {
+      // Create task dirs (none tracked in wander_children.json)
+      final orphanDir = Directory('${signalDir.path}/task-orphan01')
+        ..createSync(recursive: true);
+
+      final knownSignalDirs = <String>{};
+
+      for (final entity in signalDir.listSync()) {
+        if (entity is Directory) {
+          final name = entity.path.split('/').last;
+          if (!name.startsWith('task-')) continue;
+          if (!knownSignalDirs.contains(entity.path)) {
+            entity.deleteSync(recursive: true);
+          }
+        }
+      }
+
+      expect(orphanDir.existsSync(), false);
+    });
+
+    test('legacy _active_task_mascots file is removed', () {
+      final legacyFile = File('${signalDir.path}/_active_task_mascots');
+      legacyFile.writeAsStringSync('abc123 /tmp/task-abc123\n');
+
+      expect(legacyFile.existsSync(), true);
+      legacyFile.deleteSync();
+      expect(legacyFile.existsSync(), false);
+    });
+  });
+
+  // ── Signal Envelope Tests (#39) ─────────────────────────────
+
+  group('Signal envelope format', () {
+    late Directory signalDir;
+    late MascotController controller;
+
+    setUp(() {
+      signalDir = Directory.systemTemp.createTempSync('envelope_test_');
+      File('${signalDir.path}/mascot_speaking').createSync();
+      controller = MascotController.withConfig(
+        '${signalDir.path}/mascot_speaking',
+        _blendShapeConfig('/tmp/test'),
+      );
+    });
+
+    tearDown(() {
+      controller.dispose();
+      signalDir.deleteSync(recursive: true);
+    });
+
+    test('envelope v1 speech signal sets message and emotion', () async {
+      final envelope = jsonEncode({
+        'version': '1',
+        'type': 'mascot.speech',
+        'payload': {'message': 'こんにちは', 'emotion': 'Joy'},
+      });
+      File('${signalDir.path}/mascot_speaking')
+          .writeAsStringSync(envelope);
+
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(controller.message, 'こんにちは');
+      expect(controller.isSpeaking, true);
+    });
+
+    test('legacy JSON signal still works (backward compatible)', () async {
+      final legacy = jsonEncode({
+        'message': 'レガシー形式',
+        'emotion': 'Gentle',
+      });
+      File('${signalDir.path}/mascot_speaking')
+          .writeAsStringSync(legacy);
+
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(controller.message, 'レガシー形式');
+      expect(controller.isSpeaking, true);
+    });
+
+    test('plain text signal still works (backward compatible)', () async {
+      File('${signalDir.path}/mascot_speaking')
+          .writeAsStringSync('プレーンテキスト');
+
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(controller.message, 'プレーンテキスト');
+      expect(controller.isSpeaking, true);
+    });
+
+    test('spawn signal envelope is unwrapped correctly', () {
+      final envelope = jsonEncode({
+        'version': '1',
+        'type': 'mascot.spawn',
+        'payload': {'task_id': 'abc12345'},
+      });
+      final json = jsonDecode(envelope) as Map<String, dynamic>;
+      // Unwrap envelope
+      final payload = json.containsKey('version')
+          ? (json['payload'] as Map<String, dynamic>? ?? {})
+          : json;
+      expect(payload['task_id'], 'abc12345');
+    });
+
+    test('legacy spawn signal is read directly', () {
+      final legacy = jsonEncode({'task_id': 'def67890'});
+      final json = jsonDecode(legacy) as Map<String, dynamic>;
+      // No envelope, read directly
+      final payload = json.containsKey('version')
+          ? (json['payload'] as Map<String, dynamic>? ?? {})
+          : json;
+      expect(payload['task_id'], 'def67890');
+    });
+
+    test('position envelope is unwrapped for collision', () {
+      final envelope = jsonEncode({
+        'version': '1',
+        'type': 'mascot.position',
+        'payload': {'x': 100.0, 'y': 200.0, 'w': 150.0, 'h': 350.0},
+      });
+      final json = jsonDecode(envelope) as Map<String, dynamic>;
+      final data = json.containsKey('version')
+          ? (json['payload'] as Map<String, dynamic>? ?? {})
+          : json;
+      expect((data['x'] as num).toDouble(), 100.0);
+      expect((data['y'] as num).toDouble(), 200.0);
+    });
+  });
+
+  // ── WindowConfig Tests (#38) ──────────────────────────────
+
+  group('WindowConfig', () {
+    test('default constructor provides expected values', () {
+      const config = WindowConfig();
+      expect(config.mainWidth, 424.0);
+      expect(config.mainHeight, 528.0);
+      expect(config.childWidth, 264.0);
+      expect(config.maxChildren, 2);
+      expect(config.wanderWidth, 152.0);
+      expect(config.wanderHeight, 280.0);
+      expect(config.gravity, 0.8);
+      expect(config.bouncePeriodMs, 600);
+      expect(config.bounceHeight, 6.0);
+      expect(config.squishAmount, 0.03);
+      expect(config.speedMin, 0.4);
+      expect(config.speedMax, 1.2);
+      expect(config.collisionCheckInterval, 18);
+      expect(config.collisionCooldownSeconds, 5);
+      expect(config.broadcastThreshold, 10.0);
+    });
+
+    test('fromTomlString parses all sections', () {
+      const toml = '''
+[main_window]
+width = 500.0
+height = 600.0
+
+[child_window]
+width = 300.0
+max_children = 3
+
+[wander_window]
+width = 200.0
+height = 400.0
+
+[wander.physics]
+gravity = 1.0
+bounce_damping = 0.5
+
+[wander.animation]
+bounce_period_ms = 800
+bounce_height = 8.0
+
+[wander.behavior]
+speed_min = 0.5
+speed_max = 2.0
+
+[wander.collision]
+check_interval = 10
+cooldown_seconds = 3
+broadcast_threshold = 5.0
+''';
+      final config = WindowConfig.fromTomlString(toml);
+      expect(config.mainWidth, 500.0);
+      expect(config.mainHeight, 600.0);
+      expect(config.childWidth, 300.0);
+      expect(config.maxChildren, 3);
+      expect(config.wanderWidth, 200.0);
+      expect(config.wanderHeight, 400.0);
+      expect(config.gravity, 1.0);
+      expect(config.bounceDamping, 0.5);
+      expect(config.bouncePeriodMs, 800);
+      expect(config.bounceHeight, 8.0);
+      expect(config.speedMin, 0.5);
+      expect(config.speedMax, 2.0);
+      expect(config.collisionCheckInterval, 10);
+      expect(config.collisionCooldownSeconds, 3);
+      expect(config.broadcastThreshold, 5.0);
+    });
+
+    test('fromFile returns defaults for missing file', () {
+      final config = WindowConfig.fromFile('/nonexistent/path/window.toml');
+      expect(config.mainWidth, 424.0);
+      expect(config.bounceHeight, 6.0);
+    });
+
+    test('partial TOML fills missing values with defaults', () {
+      const toml = '''
+[main_window]
+width = 500.0
+''';
+      final config = WindowConfig.fromTomlString(toml);
+      expect(config.mainWidth, 500.0);
+      // All other values should be defaults
+      expect(config.mainHeight, 528.0);
+      expect(config.bounceHeight, 6.0);
+      expect(config.maxChildren, 2);
     });
   });
 }

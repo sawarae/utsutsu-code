@@ -17,6 +17,12 @@ class MascotWidget extends StatefulWidget {
   final WanderController? wanderController;
   final bool outlineEnabled;
 
+  /// Override render dimensions for swarm LOD0 mode.
+  /// When set, camera zoom is scaled by renderWidth / 264.0
+  /// and the character area uses these dimensions instead of defaults.
+  final double? renderWidth;
+  final double? renderHeight;
+
   /// Called when the dismiss animation completes.
   /// If null, the window is closed (main mascot behavior).
   final VoidCallback? onDismissComplete;
@@ -26,6 +32,8 @@ class MascotWidget extends StatefulWidget {
     required this.controller,
     this.wanderController,
     this.outlineEnabled = false,
+    this.renderWidth,
+    this.renderHeight,
     this.onDismissComplete,
   });
 
@@ -37,6 +45,8 @@ class _MascotWidgetState extends State<MascotWidget>
     with TickerProviderStateMixin {
   static const _clickThroughChannel = MethodChannel('mascot/click_through');
   static const _nativeDragChannel = MethodChannel('mascot/native_drag');
+  static const _windowReadyChannel = MethodChannel('mascot/window_ready');
+  static const _wanderModeChannel = MethodChannel('mascot/wander_mode');
 
   // Close button position/size in logical coordinates.
   // Must match kCloseBtn* constants in flutter_window.h.
@@ -99,9 +109,11 @@ class _MascotWidgetState extends State<MascotWidget>
       _expressionService.expressCollision();
     };
     _loadModel();
-    // In wander mode, disable native window dragging so Flutter handles it
-    if (_isWander) {
+    // In wander mode, disable native window dragging so Flutter handles it,
+    // and skip CGWindowListCreateImage-based click-through tracking
+    if (_isWander && io.Platform.isMacOS) {
       _nativeDragChannel.invokeMethod('setEnabled', false);
+      _wanderModeChannel.invokeMethod('setEnabled', true);
     }
     // Push initial opaque regions after first frame renders
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -138,8 +150,10 @@ class _MascotWidgetState extends State<MascotWidget>
       final camera = pc.camera;
       if (camera != null) {
         var zoom = config.cameraZoom;
-        // Scale zoom for wander mode's smaller window
-        if (_isWander) {
+        // Scale zoom for wander mode's smaller window or swarm LOD0
+        if (widget.renderWidth != null) {
+          zoom *= widget.renderWidth! / 264.0;
+        } else if (_isWander) {
           zoom *= _wander!.windowWidth / 264.0;
         }
         camera.zoom = zoom;
@@ -153,6 +167,8 @@ class _MascotWidgetState extends State<MascotWidget>
         });
         _syncParameters();
         _modelFadeController.forward();
+        // Signal native window to become visible (prevents yellow flash)
+        _windowReadyChannel.invokeMethod('show');
       }
     } catch (e) {
       debugPrint('Failed to load utsutsu2d model: $e');
@@ -300,6 +316,12 @@ class _MascotWidgetState extends State<MascotWidget>
 
   @override
   Widget build(BuildContext context) {
+    if (!_modelLoaded) {
+      return const ColoredBox(
+        color: Colors.transparent,
+        child: SizedBox.expand(),
+      );
+    }
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: AnimatedBuilder(
@@ -317,17 +339,19 @@ class _MascotWidgetState extends State<MascotWidget>
         child: ListenableBuilder(
           listenable: _controller,
           builder: (context, _) {
-            final charW = _isWander ? _wander!.windowWidth : 264.0;
-            // Wander mode: fill the entire window height so the
+            final charW = widget.renderWidth ??
+                (_isWander ? _wander!.windowWidth : 264.0);
+            // Wander mode / swarm LOD0: fill the entire area so the
             // character head sits near the top and the speech bubble
             // (overlaid at top:0) appears right above it.
-            final charH = _isWander ? _wander!.windowHeight.toDouble() : 528.0;
+            final charH = widget.renderHeight ??
+                (_isWander ? _wander!.windowHeight.toDouble() : 528.0);
 
-            // Position bubble near the character head in wander mode.
+            // Position bubble just above the character head in wander mode.
             // The character renders in the lower portion of the window
-            // due to small zoom, so place bubble ~40% from top.
+            // due to small zoom, so place bubble ~30% from top.
             final wanderBubbleTop = _isWander
-                ? (charH * 0.40).roundToDouble()
+                ? (charH * 0.20).roundToDouble()
                 : 0.0;
 
             return FadeTransition(
@@ -366,7 +390,15 @@ class _MascotWidgetState extends State<MascotWidget>
                           onPanEnd: _isWander
                               ? (details) => _wander!.endDrag()
                               : null,
-                          child: _buildWanderWrapper(child: _buildCharacter()),
+                          child: _buildWanderWrapper(
+                            child: _isWander
+                                ? Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8),
+                                    child: _buildCharacter(),
+                                  )
+                                : _buildCharacter(),
+                          ),
                         ),
                       ),
                     ),
@@ -402,7 +434,10 @@ class _MascotWidgetState extends State<MascotWidget>
                     _isWander
                         ? Positioned(
                             left: 4,
-                            top: (wanderBubbleTop - (i + 1) * 30.0).clamp(0.0, wanderBubbleTop),
+                            top: (wanderBubbleTop - (i + 1) * 30.0).clamp(
+                              0.0,
+                              wanderBubbleTop,
+                            ),
                             right: 4,
                             child: _WanderBubble(
                               text: _expressionService.activeBubbles[i].text,
@@ -417,7 +452,7 @@ class _MascotWidgetState extends State<MascotWidget>
                               showTail: i == 0,
                             ),
                           ),
-                  if (io.Platform.isWindows && !_isWander)
+                  if (!_isWander)
                     Positioned(
                       top: _closeBtnTop,
                       left: _closeBtnLeft,
