@@ -304,9 +304,7 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
       if (_wanderChildren.isEmpty) return;
       final before = _wanderChildren.length;
       _wanderChildren.removeWhere((child) {
-        // killPid with SIGCONT is harmless; returns false if process is gone
-        final alive = Process.killPid(child.pid, ProcessSignal.sigcont);
-        return !alive;
+        return !_isProcessAlive(child.pid);
       });
       if (_wanderChildren.length < before) {
         _persistChildPids();
@@ -315,15 +313,48 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     });
   }
 
+  /// Check if a process is still alive, cross-platform.
+  /// On macOS/Linux, sends SIGCONT (harmless no-op signal).
+  /// On Windows, SIGCONT is not supported, so use SIGTERM with signal 0
+  /// semantics: killPid returns false if the process doesn't exist.
+  static bool _isProcessAlive(int pid) {
+    if (Platform.isWindows) {
+      // On Windows, Process.killPid only supports sigterm/sigkill.
+      // Instead, try to open the process handle via a harmless kill(0)-like
+      // check. killPid(pid, sigterm) would actually terminate it, so we
+      // use a different approach: check if the dismiss signal was written.
+      // Fallback: use Process.run to query tasklist.
+      try {
+        final result = Process.runSync(
+          'tasklist',
+          ['/FI', 'PID eq $pid', '/NH'],
+        );
+        return result.stdout.toString().contains('$pid');
+      } catch (_) {
+        return true; // Assume alive on error to avoid premature reaping
+      }
+    }
+    // macOS/Linux: SIGCONT is harmless and returns false if process is gone
+    return Process.killPid(pid, ProcessSignal.sigcont);
+  }
+
   /// Use FSEvents (macOS) / inotify (Linux) to watch for spawn_child file
   /// creation. Falls back to 200ms polling if watch() is unavailable.
   void _startSpawnWatcher() {
     final signalDir = widget.config.signalDir ?? _defaultSignalDir();
     final dir = Directory(signalDir);
     if (!dir.existsSync()) dir.createSync(recursive: true);
+
+    // On Windows, Directory.watch() starts successfully but may not deliver
+    // FileSystemEvent.create events reliably. Always use polling there.
+    if (Platform.isWindows) {
+      _startSpawnPolling();
+      return;
+    }
+
     try {
       _spawnWatcher = dir.watch(events: FileSystemEvent.create).listen((event) {
-        if (event.path.endsWith('/spawn_child')) {
+        if (event.path.endsWith('/spawn_child') || event.path.endsWith(r'\spawn_child')) {
           _checkSpawnSignal();
         }
       }, onError: (_) {
@@ -443,7 +474,10 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
 
     // In swarm mode, don't consume the signal — just ensure the overlay
     // is running and let it handle all spawn signals directly.
-    if (_wc.maxChildren > _wc.swarmThreshold) {
+    // Swarm overlay is not yet supported on Windows (fullscreen transparent
+    // overlay requires additional DWM/layered-window work), so always use
+    // individual wander child processes there.
+    if (!Platform.isWindows && _wc.maxChildren > _wc.swarmThreshold) {
       if (_swarmOverlay == null) {
         _launchSwarmOverlay('blend_shape_mini');
       }
@@ -545,7 +579,12 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     if (widget.config.modelsDir != null) {
       args.addAll(['--models-dir', widget.config.modelsDir!]);
     }
-    Process.start(exe, args, mode: ProcessStartMode.detached).then((process) {
+    // Use the exe's directory as working directory so the child can find
+    // its data/ folder (Flutter assets, config files, etc.).
+    final exeDir = File(exe).parent.path;
+    Process.start(exe, args,
+        mode: ProcessStartMode.detached,
+        workingDirectory: exeDir).then((process) {
       _wanderChildren.add(_WanderChild(pid: process.pid, signalDir: signalDir));
       _persistChildPids();
       debugPrint('Spawned wander mascot: pid=${process.pid} (${_wanderChildren.length}/${_wc.maxChildren})');

@@ -25,11 +25,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
+  // Detect wander mode from command line to choose the correct initial size.
+  // Matching the final size avoids Flutter surface resize distortion.
+  bool is_wander = wcsstr(command_line, L"--wander") != nullptr;
+
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
-  // Match the final mascot window size to avoid unnecessary surface
-  // recreation during startup (window_manager resizes to this later).
-  Win32Window::Size size(424, 528);
+  Win32Window::Size size(is_wander ? 152 : 424, is_wander ? 280 : 528);
   if (!window.Create(L"mascot", origin, size)) {
     return EXIT_FAILURE;
   }
