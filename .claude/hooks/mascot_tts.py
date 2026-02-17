@@ -33,7 +33,8 @@ LOG_DIR = os.path.expanduser("~/.claude/logs")
 LOG_FILE = os.path.join(LOG_DIR, "mascot_tts.log")
 
 DEFAULT_MESSAGE = "Task completed"
-MAX_MESSAGE_LENGTH = 30
+MAX_MESSAGE_LENGTH_JA = 30
+MAX_MESSAGE_LENGTH_EN = 200
 SIGNAL_DIR = os.path.expanduser("~/.claude/utsutsu-code")
 SIGNAL_FILE = os.path.join(SIGNAL_DIR, "mascot_speaking")
 MUTE_FILE = os.path.join(SIGNAL_DIR, "tts_muted")
@@ -443,7 +444,7 @@ class GenieTtsAdapter:
                 logging.error("Genie-TTS failed: %s", result.stderr)
                 return False
 
-            subprocess.run(["afplay", wav_path])
+            _play_wav(wav_path)
             return True
         except subprocess.TimeoutExpired:
             logging.error("Genie-TTS timed out")
@@ -604,7 +605,8 @@ def main():
         message = " ".join(argv)
     else:
         message = hook_input.get("message", DEFAULT_MESSAGE)
-    message = message[:MAX_MESSAGE_LENGTH]
+    max_len = MAX_MESSAGE_LENGTH_EN if lang == "en" else MAX_MESSAGE_LENGTH_JA
+    message = message[:max_len]
     logging.info("TTS fired: message=%s emotion=%s", message, emotion)
 
     config = load_config()
