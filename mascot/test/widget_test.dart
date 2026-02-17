@@ -6,6 +6,7 @@ import 'dart:ui' show Offset;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
+import 'package:mascot/cut_in_overlay.dart';
 import 'package:mascot/mascot_controller.dart';
 import 'package:mascot/model_config.dart';
 import 'package:mascot/wander_controller.dart';
@@ -1059,6 +1060,64 @@ width = 500.0
       expect(config.mainHeight, 528.0);
       expect(config.bounceHeight, 6.0);
       expect(config.maxChildren, 2);
+    });
+  });
+
+  // ── CutInBackground Tests ─────────────────────────────────
+
+  group('CutInBackground', () {
+    test('forEmotion maps Joy to sparkleBurst', () {
+      expect(CutInBackground.forEmotion('Joy'), CutInBackground.sparkleBurst);
+    });
+
+    test('forEmotion maps Singing to sparkleBurst', () {
+      expect(CutInBackground.forEmotion('Singing'), CutInBackground.sparkleBurst);
+    });
+
+    test('forEmotion maps Blush to sakura', () {
+      expect(CutInBackground.forEmotion('Blush'), CutInBackground.sakura);
+    });
+
+    test('forEmotion maps Trouble to diagonalStripes', () {
+      expect(CutInBackground.forEmotion('Trouble'), CutInBackground.diagonalStripes);
+    });
+
+    test('forEmotion maps Gentle to sakura', () {
+      expect(CutInBackground.forEmotion('Gentle'), CutInBackground.sakura);
+    });
+
+    test('forEmotion falls back to speedLines for unknown emotion', () {
+      expect(CutInBackground.forEmotion('Unknown'), CutInBackground.speedLines);
+      expect(CutInBackground.forEmotion(null), CutInBackground.speedLines);
+    });
+
+    test('fromName resolves by fileName', () {
+      expect(CutInBackground.fromName('speed_lines'), CutInBackground.speedLines);
+      expect(CutInBackground.fromName('diagonal_stripes'), CutInBackground.diagonalStripes);
+      expect(CutInBackground.fromName('sparkle_burst'), CutInBackground.sparkleBurst);
+      expect(CutInBackground.fromName('sakura'), CutInBackground.sakura);
+      expect(CutInBackground.fromName('cyber'), CutInBackground.cyber);
+    });
+
+    test('fromName resolves by enum name', () {
+      expect(CutInBackground.fromName('speedLines'), CutInBackground.speedLines);
+      expect(CutInBackground.fromName('diagonalStripes'), CutInBackground.diagonalStripes);
+    });
+
+    test('fromName returns null for unknown name', () {
+      expect(CutInBackground.fromName('nonexistent'), isNull);
+      expect(CutInBackground.fromName(null), isNull);
+    });
+
+    test('assetPath returns correct SVG path', () {
+      expect(CutInBackground.speedLines.assetPath, 'assets/backgrounds/speed_lines.svg');
+      expect(CutInBackground.sakura.assetPath, 'assets/backgrounds/sakura.svg');
+      expect(CutInBackground.cyber.assetPath, 'assets/backgrounds/cyber.svg');
+    });
+
+    test('all five backgrounds have unique file names', () {
+      final fileNames = CutInBackground.values.map((b) => b.fileName).toSet();
+      expect(fileNames.length, CutInBackground.values.length);
     });
   });
 }
