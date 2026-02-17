@@ -712,21 +712,21 @@ def game_main(stdscr):
             state.running = False
             break
 
-        # Process input — capture time at key detection for accurate judging
+        # Process input — use get_wch() for proper Unicode handling
+        # (getch() splits multi-byte chars like full-width space into raw bytes)
         try:
-            key = stdscr.getch()
+            wch = stdscr.get_wch()
         except curses.error:
-            key = -1
+            wch = None
 
-        if key != -1:
-            log.debug("KEY code=%d char=%r t=%.3f", key,
-                      chr(key) if 32 <= key < 127 else "?", elapsed)
+        if wch is not None:
+            log.debug("KEY wch=%r t=%.3f", wch, elapsed)
 
-        if key == ord("q") or key == ord("Q"):
+        if wch in ("q", "Q"):
             state.quit_early = True
             state.running = False
             break
-        elif key == ord(" "):
+        elif wch in (" ", "\u3000"):  # ASCII space or full-width space (IME)
             hit_time = time.monotonic()
             judge_hit(state, hit_time)
 
