@@ -107,11 +107,12 @@ void main(List<String> args) async {
       // WanderController.start() begins the drop animation.
       await windowManager.setPosition(Offset(0, -windowSize.height * 2));
     } else {
-      // Position at bottom of screen (default: left edge)
+      // Position at bottom-left of screen
       final primaryDisplay = await screenRetriever.getPrimaryDisplay();
       final screenSize = primaryDisplay.size;
       final x = config.offsetX ?? 0.0;
-      final y = screenSize.height - windowSize.height;
+      // Calculate bottom position (accounting for taskbar/dock on Linux)
+      final y = screenSize.height - windowSize.height - (Platform.isLinux ? 60 : 0);
       await windowManager.setPosition(Offset(x, y));
     }
 

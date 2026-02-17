@@ -54,6 +54,11 @@ Desktop mascot with lip-sync animation for AI coding assistants.
 
 セットアップ: `/tsukuyomi-setup` / クリーンアップ: `/tsukuyomi-cleanup`
 
+## 開発
+mac / windows / linux対応。
+開発前に現在のosを取得してからプラットフォームに合わせて開発する。
+他のプラットフォームへのデグレを避ける。
+
 ## Testing Protocol
 
 `/develop` の Phase 4 で必ず以下のテストを実行すること。PR前に全レベルをクリアしないとマージ禁止。
