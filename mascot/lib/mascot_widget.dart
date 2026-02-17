@@ -175,7 +175,9 @@ class _MascotWidgetState extends State<MascotWidget>
         _syncParameters();
         _modelFadeController.forward();
         // Signal native window to become visible (prevents yellow flash)
-        _windowReadyChannel.invokeMethod('show');
+        if (io.Platform.isMacOS) {
+          _windowReadyChannel.invokeMethod('show');
+        }
       }
     } catch (e) {
       debugPrint('Failed to load utsutsu2d model: $e');
