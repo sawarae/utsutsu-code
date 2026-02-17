@@ -119,7 +119,9 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
     }
 
     // Signal native window visibility
-    _windowReadyChannel.invokeMethod('show');
+    if (Platform.isMacOS) {
+      _windowReadyChannel.invokeMethod('show');
+    }
 
     // Start entity rect updates for click-through
     _startEntityRectUpdates();
