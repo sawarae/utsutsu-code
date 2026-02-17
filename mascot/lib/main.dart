@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io' show Directory, File, FileSystemEvent, Platform, Process, ProcessSignal, ProcessStartMode;
 
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -76,12 +77,12 @@ void main(List<String> args) async {
     // creates the glass region; Flutter must also set transparent background
     // so that alpha=0 pixels pass through to the DWM compositor.
     backgroundColor: Colors.transparent,
-    titleBarStyle:
-        Platform.isWindows ? TitleBarStyle.normal : TitleBarStyle.hidden,
-    // Hide traffic light buttons in wander mode. Must be set here (not in
-    // Swift awakeFromNib) because window_manager's setTitleBarStyle
-    // force-unwraps standardWindowButton(.closeButton) superview.
-    windowButtonVisibility: !config.wander,
+    // On Windows, skip setTitleBarStyle entirely to avoid DWM margin reset
+    // that breaks DwmExtendFrameIntoClientArea transparency.
+    titleBarStyle: Platform.isWindows ? null : TitleBarStyle.hidden,
+    // Hide native traffic light buttons — use custom close button instead.
+    // Wander mode also hides them (child mascots are closed by parent).
+    windowButtonVisibility: false,
     skipTaskbar: false,
     alwaysOnTop: true,
   );
@@ -89,12 +90,16 @@ void main(List<String> args) async {
   windowManager.waitUntilReadyToShow(windowOptions, () async {
     await windowManager.setBackgroundColor(Colors.transparent);
 
-    // Hide traffic light buttons in wander mode (macOS)
+    // Hide traffic light buttons / system buttons in wander mode
     // Disable window-level dragging so Flutter GestureDetector handles it
-    if (config.wander && Platform.isMacOS) {
+    if (config.wander) {
       await windowManager.setClosable(false);
       await windowManager.setMinimizable(false);
-      await windowManager.setMovable(false);
+      if (Platform.isMacOS) {
+        await windowManager.setMovable(false);
+      }
+      // On Windows, native drag is disabled via mascot/native_drag channel
+      // in MascotWidget.initState
     }
 
     if (config.wander) {
@@ -256,8 +261,9 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     );
 
     if (widget.config.wander) {
-      final windowW = widget.config.width ?? 150.0;
-      final windowH = widget.config.height ?? 350.0;
+      final wc = widget.windowConfig;
+      final windowW = widget.config.width ?? wc.wanderWidth;
+      final windowH = widget.config.height ?? wc.wanderHeight;
       _wanderController = WanderController(
         windowWidth: windowW,
         windowHeight: windowH,
@@ -299,9 +305,7 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
       if (_wanderChildren.isEmpty) return;
       final before = _wanderChildren.length;
       _wanderChildren.removeWhere((child) {
-        // killPid with SIGCONT is harmless; returns false if process is gone
-        final alive = Process.killPid(child.pid, ProcessSignal.sigcont);
-        return !alive;
+        return !_isProcessAlive(child.pid);
       });
       if (_wanderChildren.length < before) {
         _persistChildPids();
@@ -310,15 +314,48 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     });
   }
 
+  /// Check if a process is still alive, cross-platform.
+  /// On macOS/Linux, sends SIGCONT (harmless no-op signal).
+  /// On Windows, SIGCONT is not supported, so use SIGTERM with signal 0
+  /// semantics: killPid returns false if the process doesn't exist.
+  static bool _isProcessAlive(int pid) {
+    if (Platform.isWindows) {
+      // On Windows, Process.killPid only supports sigterm/sigkill.
+      // Instead, try to open the process handle via a harmless kill(0)-like
+      // check. killPid(pid, sigterm) would actually terminate it, so we
+      // use a different approach: check if the dismiss signal was written.
+      // Fallback: use Process.run to query tasklist.
+      try {
+        final result = Process.runSync(
+          'tasklist',
+          ['/FI', 'PID eq $pid', '/NH'],
+        );
+        return result.stdout.toString().contains('$pid');
+      } catch (_) {
+        return true; // Assume alive on error to avoid premature reaping
+      }
+    }
+    // macOS/Linux: SIGCONT is harmless and returns false if process is gone
+    return Process.killPid(pid, ProcessSignal.sigcont);
+  }
+
   /// Use FSEvents (macOS) / inotify (Linux) to watch for spawn_child file
   /// creation. Falls back to 200ms polling if watch() is unavailable.
   void _startSpawnWatcher() {
     final signalDir = widget.config.signalDir ?? _defaultSignalDir();
     final dir = Directory(signalDir);
     if (!dir.existsSync()) dir.createSync(recursive: true);
+
+    // On Windows, Directory.watch() starts successfully but may not deliver
+    // FileSystemEvent.create events reliably. Always use polling there.
+    if (Platform.isWindows) {
+      _startSpawnPolling();
+      return;
+    }
+
     try {
       _spawnWatcher = dir.watch(events: FileSystemEvent.create).listen((event) {
-        if (event.path.endsWith('/spawn_child')) {
+        if (event.path.endsWith('/spawn_child') || event.path.endsWith(r'\spawn_child')) {
           _checkSpawnSignal();
         }
       }, onError: (_) {
@@ -388,7 +425,7 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
       if (parentDir.existsSync()) {
         for (final entity in parentDir.listSync()) {
           if (entity is Directory) {
-            final name = entity.path.split('/').last;
+            final name = p.basename(entity.path);
             if (!name.startsWith('task-')) continue;
 
             final hasDismiss =
@@ -438,7 +475,10 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
 
     // In swarm mode, don't consume the signal — just ensure the overlay
     // is running and let it handle all spawn signals directly.
-    if (_wc.maxChildren > _wc.swarmThreshold) {
+    // Swarm overlay is not yet supported on Windows (fullscreen transparent
+    // overlay requires additional DWM/layered-window work), so always use
+    // individual wander child processes there.
+    if (!Platform.isWindows && _wc.maxChildren > _wc.swarmThreshold) {
       if (_swarmOverlay == null) {
         _launchSwarmOverlay('blend_shape_mini');
       }
@@ -540,7 +580,12 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     if (widget.config.modelsDir != null) {
       args.addAll(['--models-dir', widget.config.modelsDir!]);
     }
-    Process.start(exe, args, mode: ProcessStartMode.detached).then((process) {
+    // Use the exe's directory as working directory so the child can find
+    // its data/ folder (Flutter assets, config files, etc.).
+    final exeDir = File(exe).parent.path;
+    Process.start(exe, args,
+        mode: ProcessStartMode.detached,
+        workingDirectory: exeDir).then((process) {
       _wanderChildren.add(_WanderChild(pid: process.pid, signalDir: signalDir));
       _persistChildPids();
       debugPrint('Spawned wander mascot: pid=${process.pid} (${_wanderChildren.length}/${_wc.maxChildren})');

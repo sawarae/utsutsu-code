@@ -218,16 +218,15 @@ class SwarmSimulation extends ChangeNotifier {
 
   void _startReverse(MascotEntity e, {required bool goLeft}) {
     e.isPaused = true;
-    // Simple pause-and-reverse: will be unpaused on next countdown
     e.facingLeft = goLeft;
     e.speed = _randomSpeed();
-    // Short pause in ticks (~6 ticks = ~200ms at 33ms/tick)
-    // After 6 ticks isPaused is already set, movement will resume when
-    // _updateTimers decrements reverseCountdown to trigger next reverse
     e.reverseCountdown = 6; // ~200ms pause
-    // Schedule unpause
+    // Schedule unpause.  Re-apply facingLeft because collision resolution
+    // can override it while the entity is paused at a screen edge, causing
+    // it to face the wall and immediately re-trigger _startReverse.
     Future.delayed(Duration(milliseconds: 200 + _rng.nextInt(300)), () {
       e.isPaused = false;
+      e.facingLeft = goLeft;
       e.speedMultiplier = 1.0;
       e.reverseCountdown = _randomReverseDelay();
     });
@@ -268,6 +267,7 @@ class SwarmSimulation extends ChangeNotifier {
       e.y = bottomY;
       e.isInertia = false;
       e.isPaused = false;
+      e.speedMultiplier = 1.0; // Reset so movement resumes immediately
       e.reverseCountdown = _randomReverseDelay();
     }
   }

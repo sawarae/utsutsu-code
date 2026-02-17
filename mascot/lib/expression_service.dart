@@ -286,11 +286,16 @@ class ExpressionService extends ChangeNotifier {
   /// Ensure ~/.local/bin is in PATH for the claude CLI.
   static String _pathWithLocalBin() {
     final path = Platform.environment['PATH'] ?? '';
-    final home = Platform.environment['HOME'] ?? '';
-    if (home.isNotEmpty) {
-      return '$home/.local/bin:$path';
+    final home = Platform.environment['HOME'] ??
+        Platform.environment['USERPROFILE'] ?? '';
+    if (home.isEmpty) return path;
+
+    if (Platform.isWindows) {
+      // On Windows, claude CLI is typically in %LOCALAPPDATA%\Programs or PATH
+      // Use semicolon as PATH separator
+      return '$home\\.local\\bin;$path';
     }
-    return path;
+    return '$home/.local/bin:$path';
   }
 
   @override
