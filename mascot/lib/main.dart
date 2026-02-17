@@ -330,7 +330,8 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
           'tasklist',
           ['/FI', 'PID eq $pid', '/NH'],
         );
-        return result.stdout.toString().contains('$pid');
+        return RegExp(r'\b' + pid.toString() + r'\b')
+            .hasMatch(result.stdout.toString());
       } catch (_) {
         return true; // Assume alive on error to avoid premature reaping
       }

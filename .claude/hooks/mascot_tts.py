@@ -444,7 +444,7 @@ class GenieTtsAdapter:
                 logging.error("Genie-TTS failed: %s", result.stderr)
                 return False
 
-            subprocess.run(["afplay", wav_path])
+            _play_wav(wav_path)
             return True
         except subprocess.TimeoutExpired:
             logging.error("Genie-TTS timed out")

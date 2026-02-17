@@ -31,6 +31,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
+  // Must match WindowConfig defaults (wanderWidth/Height, mainWidth/Height).
   Win32Window::Size size(is_wander ? 152 : 424, is_wander ? 280 : 528);
   if (!window.Create(L"mascot", origin, size)) {
     return EXIT_FAILURE;

@@ -349,6 +349,7 @@ class _MascotWidgetState extends State<MascotWidget>
 
   @override
   void dispose() {
+    _nativeDragPollTimer?.cancel();
     _wander?.removeListener(_onWanderChanged);
     _controller.removeListener(_onControllerChanged);
     _expressionService.removeListener(_onBubblesChanged);
