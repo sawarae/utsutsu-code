@@ -96,14 +96,19 @@ static void my_application_activate(GApplication* application) {
                            self);
   gtk_widget_realize(GTK_WIDGET(view));
 
-  // Force window to bottom-left position (GNOME ignores programmatic positioning otherwise)
+  // Position window at bottom-left of PRIMARY display
   GdkDisplay* display = gdk_display_get_default();
   GdkMonitor* monitor = gdk_display_get_primary_monitor(display);
   GdkRectangle geometry;
   gdk_monitor_get_geometry(monitor, &geometry);
-  // With SOUTH_WEST gravity, (0, 0) = bottom-left corner
-  // Positive Y moves UP from bottom (to account for taskbar)
-  gtk_window_move(window, 0, 60);
+
+  // Calculate absolute position on primary display
+  // geometry.x, geometry.y = monitor's position in overall desktop
+  // geometry.width, geometry.height = monitor's dimensions
+  gint x = geometry.x;  // Left edge of primary display
+  gint y = geometry.y + geometry.height - 528;  // Bottom of primary display - window height
+
+  gtk_window_move(window, x, y);
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 
