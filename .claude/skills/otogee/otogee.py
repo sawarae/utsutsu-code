@@ -15,6 +15,7 @@ Requires only Python stdlib (curses, time, json, os, subprocess, threading).
 
 import curses
 import json
+import logging
 import os
 import platform
 import random
@@ -31,6 +32,9 @@ SIGNAL_DIR = os.path.expanduser("~/.claude/utsutsu-code")
 SIGNAL_FILE = os.path.join(SIGNAL_DIR, "mascot_speaking")
 SPAWN_SIGNAL = os.path.join(SIGNAL_DIR, "spawn_child")
 TTS_SCRIPT = os.path.expanduser("~/.claude/hooks/mascot_tts.py")
+
+LOG_DIR = os.path.expanduser("~/.claude/logs")
+LOG_FILE = os.path.join(LOG_DIR, "otogee_debug.log")
 
 GAME_DURATION = 30.0  # seconds
 FALL_TIME = 2.0  # seconds for a note to fall from top to judge line
@@ -81,6 +85,29 @@ SOUNDS = {
     "miss": f"{_SOUND_DIR}/Basso.aiff",
 }
 
+# Encouragement thresholds (consecutive misses → message)
+ENCOURAGEMENTS = [
+    (3,  "Gentle", "がんばって！"),
+    (6,  "Gentle", "リラックスして！"),
+    (10, "Joy",    "おうえんしてるよ！"),
+    (15, "Gentle", "むりしないでね"),
+]
+
+log = logging.getLogger("otogee")
+
+
+def setup_logging():
+    """Configure debug log to file."""
+    os.makedirs(LOG_DIR, exist_ok=True)
+    logging.basicConfig(
+        filename=LOG_FILE,
+        level=logging.DEBUG,
+        format="%(asctime)s.%(msecs)03d %(message)s",
+        datefmt="%H:%M:%S",
+        force=True,
+    )
+    log.info("=== otogee session start ===")
+
 
 # ── Data Classes ─────────────────────────────────────────────
 
@@ -113,6 +140,7 @@ class GameState:
     start_time: float = 0.0
     running: bool = True
     quit_early: bool = False
+    consecutive_misses: int = 0
     child_manager: object = None  # Set in game_main
 
 
@@ -341,24 +369,34 @@ class ChildMascotManager:
 
 def judge_hit(state: GameState, hit_time: float) -> Judgment:
     """Find the closest active note and judge timing."""
+    elapsed = hit_time - state.start_time
     best_note = None
     best_diff = float("inf")
 
+    # Log nearest active notes for debugging
+    nearby = []
     for note in state.notes:
         if not note.active:
             continue
-        diff = abs(hit_time - note.target_time)
-        if diff < best_diff and diff <= GOOD_WINDOW:
-            best_diff = diff
+        diff = note.target_time - hit_time
+        if abs(diff) < 1.0:
+            nearby.append(f"{diff:+.3f}s")
+        if abs(diff) < best_diff and abs(diff) <= GOOD_WINDOW:
+            best_diff = abs(diff)
             best_note = note
+
+    log.info("SPACE t=%.3f nearby_notes=[%s] best_diff=%.3f window=%.3f",
+             elapsed, ", ".join(nearby[:5]), best_diff, GOOD_WINDOW)
 
     if best_note is None:
         # Pressed Space but no note nearby — play miss sound
         play_sound("miss")
+        log.info("  -> NO_MATCH (no active note within window)")
         return None
 
     best_note.active = False
     best_note.hit = True
+    state.consecutive_misses = 0
 
     if best_diff <= PERFECT_WINDOW:
         text, score = "PERFECT!", PERFECT_SCORE
@@ -369,6 +407,8 @@ def judge_hit(state: GameState, hit_time: float) -> Judgment:
     else:
         text, score = "GOOD!", GOOD_SCORE
         state.good_count += 1
+
+    log.info("  -> %s diff=%.3f", text, best_diff)
 
     # Play hit sound
     play_sound("hit")
@@ -407,17 +447,28 @@ def judge_hit(state: GameState, hit_time: float) -> Judgment:
 def check_misses(state: GameState, current_time: float):
     """Mark notes that passed the judge line without being hit."""
     any_miss = False
+    elapsed = current_time - state.start_time
     for note in state.notes:
         if not note.active:
             continue
-        if current_time - note.target_time > GOOD_WINDOW:
+        overdue = current_time - note.target_time
+        if overdue > GOOD_WINDOW:
             note.active = False
             state.miss_count += 1
+            state.consecutive_misses += 1
             any_miss = True
+            log.info("MISS t=%.3f overdue=%.3f consecutive=%d",
+                     elapsed, overdue, state.consecutive_misses)
             if state.combo >= 5:
                 write_signal("あっ", "Trouble")
             state.combo = 0
             state.last_judgment = Judgment(text="MISS", time=current_time)
+
+            # Encouragement from Tsukuyomi-chan on consecutive misses
+            for threshold, emotion, msg in ENCOURAGEMENTS:
+                if state.consecutive_misses == threshold:
+                    write_signal(msg, emotion)
+                    break
 
     if any_miss:
         play_sound("miss")
@@ -634,6 +685,9 @@ def game_main(stdscr):
     state = GameState()
     state.notes = generate_chart(GAME_DURATION)
     state.child_manager = ChildMascotManager()
+    log.info("Chart: %d notes, first=%.3f last=%.3f",
+             len(state.notes), state.notes[0].target_time,
+             state.notes[-1].target_time)
 
     # Countdown
     stdscr.nodelay(False)
@@ -664,6 +718,10 @@ def game_main(stdscr):
         except curses.error:
             key = -1
 
+        if key != -1:
+            log.debug("KEY code=%d char=%r t=%.3f", key,
+                      chr(key) if 32 <= key < 127 else "?", elapsed)
+
         if key == ord("q") or key == ord("Q"):
             state.quit_early = True
             state.running = False
@@ -692,6 +750,7 @@ def game_main(stdscr):
 
 def main():
     """Entry point. TTS calls happen outside curses for reliable audio."""
+    setup_logging()
     child_manager = None
 
     # Game start TTS (outside curses — reliable)
@@ -719,6 +778,10 @@ def main():
 
     # Print summary to stdout (for Claude to read)
     total = state.perfect_count + state.great_count + state.good_count + state.miss_count
+    log.info("RESULT grade=%s score=%d max_combo=%d P=%d G=%d OK=%d M=%d",
+             grade, state.score, state.max_combo,
+             state.perfect_count, state.great_count,
+             state.good_count, state.miss_count)
     print(f"\n{'━' * 30}")
     print(f"  Grade: {grade}  |  Score: {state.score}")
     print(f"  Max Combo: {state.max_combo}")
@@ -726,6 +789,7 @@ def main():
           f"GOOD: {state.good_count}  MISS: {state.miss_count}")
     print(f"  Total Notes: {total}")
     print(f"{'━' * 30}")
+    print(f"  Debug log: {LOG_FILE}")
 
 
 if __name__ == "__main__":
