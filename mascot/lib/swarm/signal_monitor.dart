@@ -44,7 +44,9 @@ class SignalMonitor {
   }
 
   void _scan(List<MascotEntity> entities) {
-    for (final e in entities) {
+    // Iterate a snapshot: _checkDismiss may remove entities from the live list
+    // via the onDismiss callback, which would cause ConcurrentModificationError.
+    for (final e in List.of(entities)) {
       if (e.dismissed) continue;
       _checkTts(e);
       _checkDismiss(e);

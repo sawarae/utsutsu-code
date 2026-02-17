@@ -77,6 +77,10 @@ class SwarmSimulation extends ChangeNotifier {
 
   void removeEntity(MascotEntity entity) {
     entities.remove(entity);
+    // Trigger one final repaint so the painter clears the removed sprite.
+    // Without this, _onTick skips notifyListeners() when the list is empty,
+    // leaving the last frame (with the stale sprite) visible forever.
+    notifyListeners();
   }
 
   void _onTick(Duration elapsed) {
