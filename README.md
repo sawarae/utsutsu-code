@@ -46,14 +46,20 @@ flutter run -d macos
 
 このアプリでは、フリー素材キャラクター「[つくよみちゃん](https://tyc.rei-yumesaki.net/)」（© Rei Yumesaki）を使用しています。
 
-### 立ち絵
-- **素材名:** つくよみちゃん万能立ち絵素材
+
+### （公式）つくよみちゃん万能立ち絵素材
+
 - **素材制作者:** 花兎\*
 - **素材配布URL:** <https://tyc.rei-yumesaki.net/material/illust/>
 - **利用規約:** <https://tyc.rei-yumesaki.net/about/terms/>
 
-### ミニキャラ
-- **素材名:** つくよみちゃん万能ミニキャラ素材
+### （公式）つくよみちゃん万能ミニキャラ素材
+
 - **素材制作者:** きばやし
 - **素材配布URL:** <https://tyc.rei-yumesaki.net/material/illust/>
 - **利用規約:** <https://tyc.rei-yumesaki.net/about/terms/>
+- **ニコニコ静画:** [im11318256](https://seiga.nicovideo.jp/seiga/im11318256)
+
+### 夢前月夜ちゃんが頑張る立ち絵
+- **素材制作者:** ぴぴ
+- **素材配布URL:** <https://seiga.nicovideo.jp/seiga/im11142602>
