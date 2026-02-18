@@ -209,25 +209,21 @@ class _CutInOverlayState extends State<CutInOverlay>
     // Set emotion on the controller
     widget.controller.showExpression(widget.emotion, widget.message);
 
-    // Phase 1: Background slides in
-    debugPrint('[CutIn] Phase 1: BG slide in');
-    await _bgController.forward();
+    // Phase 1: Background slides in (parallel with model load)
+    debugPrint('[CutIn] Phase 1: BG slide in + model load');
+    await Future.wait([
+      _bgController.forward(),
+      _modelReady.future.timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => debugPrint('[CutIn] Model load timed out'),
+      ),
+    ]);
     if (!mounted) { debugPrint('[CutIn] unmounted after BG'); return; }
 
     // Flash
     _flashController.forward().then((_) {
       if (mounted) _flashController.reverse();
     });
-
-    // Wait for model to load before showing character (up to 3 seconds)
-    debugPrint('[CutIn] Waiting for model load...');
-    try {
-      await _modelReady.future.timeout(const Duration(seconds: 3));
-      debugPrint('[CutIn] Model ready (loaded=$_modelLoaded)');
-    } catch (_) {
-      debugPrint('[CutIn] Model load timed out, proceeding anyway');
-    }
-    if (!mounted) { debugPrint('[CutIn] unmounted after model wait'); return; }
 
     // Phase 2: Character slides in
     debugPrint('[CutIn] Phase 2: Char slide in');
@@ -325,11 +321,11 @@ class _CutInOverlayState extends State<CutInOverlay>
               ),
             ),
 
-            // Dialogue text (right side)
+            // Dialogue text (overlaps character for wider area)
             Positioned(
-              left: charWidth + 20,
+              left: screenSize.width * 0.4,
               top: 0,
-              right: 40,
+              right: 24,
               bottom: 0,
               child: FadeTransition(
                 opacity: _textController,
@@ -390,7 +386,16 @@ class _CutInOverlayState extends State<CutInOverlay>
   }
 
   Widget _buildDialogue(Size screenSize) {
-    final fontSize = (screenSize.height * 0.09).clamp(40.0, 108.0);
+    // Available width: 60% of screen minus margins
+    final availableWidth = screenSize.width * 0.6 - 24;
+    // Base font size, then scale down if message is long
+    final baseFontSize = (screenSize.height * 0.09).clamp(40.0, 108.0);
+    // Estimate CJK char width ≈ fontSize; fit message in ~1 line ideally
+    final charsPerLine = (availableWidth / baseFontSize).floor();
+    final fontSize = widget.message.length <= charsPerLine
+        ? baseFontSize
+        : (availableWidth / widget.message.length).clamp(28.0, baseFontSize);
+    final strokeWidth = (fontSize * 0.06).clamp(3.0, 6.0);
 
     return Center(
       child: Stack(
@@ -403,7 +408,7 @@ class _CutInOverlayState extends State<CutInOverlay>
               fontWeight: FontWeight.w900,
               foreground: Paint()
                 ..style = PaintingStyle.stroke
-                ..strokeWidth = 5
+                ..strokeWidth = strokeWidth
                 ..color = Colors.black.withOpacity(0.8),
               decoration: TextDecoration.none,
               height: 1.3,
