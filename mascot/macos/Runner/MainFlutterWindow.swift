@@ -171,6 +171,11 @@ class MainFlutterWindow: NSWindow {
     }
   }
 
+  // Close button area in logical coordinates (must match Flutter's _closeBtn* constants)
+  private let closeBtnLeft: CGFloat = 228
+  private let closeBtnTop: CGFloat = 0
+  private let closeBtnSize: CGFloat = 36
+
   private func updateClickThrough() {
     // Don't toggle click-through while dragging
     guard !isDragging else { return }
@@ -185,7 +190,18 @@ class MainFlutterWindow: NSWindow {
       y: mouseLocation.y - wFrame.origin.y
     )
 
-    self.ignoresMouseEvents = isTransparentAt(windowPoint)
+    // NSWindow coordinates: origin at bottom-left, Flutter: origin at top-left
+    let flutterY = wFrame.height - windowPoint.y
+    let inCloseBtn = windowPoint.x >= closeBtnLeft
+      && windowPoint.x <= closeBtnLeft + closeBtnSize
+      && flutterY >= closeBtnTop
+      && flutterY <= closeBtnTop + closeBtnSize
+
+    if inCloseBtn {
+      self.ignoresMouseEvents = false
+    } else {
+      self.ignoresMouseEvents = isTransparentAt(windowPoint)
+    }
   }
 
   private func isTransparentAt(_ windowPoint: NSPoint) -> Bool {
