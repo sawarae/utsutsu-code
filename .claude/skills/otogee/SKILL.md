@@ -6,6 +6,8 @@ user_invocable: true
 
 # /otogee - Terminal Rhythm Game
 
+> **macOS専用** — Windowsでは未テスト（curses非対応）。macOS/Linuxターミナルでのみ動作確認済み。
+
 A terminal-based rhythm game powered by curses. Notes fall from the top of the screen; press Space with correct timing to score points. Tsukuyomi-chan reacts to your performance via mascot signals and TTS.
 
 ## Usage

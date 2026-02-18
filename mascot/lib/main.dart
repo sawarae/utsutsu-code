@@ -735,9 +735,11 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     if (background != null) {
       args.addAll(['--cutin-background', background]);
     }
-    if (widget.config.modelsDir != null) {
-      args.addAll(['--models-dir', widget.config.modelsDir!]);
-    }
+    // Always pass resolved models dir so the subprocess can find the model
+    // even if _defaultModelsDir() resolution differs in the detached process.
+    final modelsDir = widget.config.modelsDir ?? _controller.modelConfig.modelDirPath;
+    final resolvedModelsDir = Directory(modelsDir).parent.path;
+    args.addAll(['--models-dir', resolvedModelsDir]);
     if (widget.config.model != null) {
       args.addAll(['--model', widget.config.model!]);
     }
