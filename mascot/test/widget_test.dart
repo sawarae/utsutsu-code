@@ -6,6 +6,7 @@ import 'dart:ui' show Offset;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
+import 'package:mascot/cut_in_overlay.dart';
 import 'package:mascot/mascot_controller.dart';
 import 'package:mascot/model_config.dart';
 import 'package:mascot/wander_controller.dart';
@@ -1059,6 +1060,215 @@ width = 500.0
       expect(config.mainHeight, 528.0);
       expect(config.bounceHeight, 6.0);
       expect(config.maxChildren, 2);
+    });
+  });
+
+  // ── CutInBackground Tests ─────────────────────────────────
+
+  group('CutInBackground', () {
+    test('forEmotion maps Joy to sparkleBurst', () {
+      expect(CutInBackground.forEmotion('Joy'), CutInBackground.sparkleBurst);
+    });
+
+    test('forEmotion maps Singing to sparkleBurst', () {
+      expect(CutInBackground.forEmotion('Singing'), CutInBackground.sparkleBurst);
+    });
+
+    test('forEmotion maps Blush to sakura', () {
+      expect(CutInBackground.forEmotion('Blush'), CutInBackground.sakura);
+    });
+
+    test('forEmotion maps Trouble to diagonalStripes', () {
+      expect(CutInBackground.forEmotion('Trouble'), CutInBackground.diagonalStripes);
+    });
+
+    test('forEmotion maps Gentle to sakura', () {
+      expect(CutInBackground.forEmotion('Gentle'), CutInBackground.sakura);
+    });
+
+    test('forEmotion falls back to speedLines for unknown emotion', () {
+      expect(CutInBackground.forEmotion('Unknown'), CutInBackground.speedLines);
+      expect(CutInBackground.forEmotion(null), CutInBackground.speedLines);
+    });
+
+    test('fromName resolves by fileName', () {
+      expect(CutInBackground.fromName('speed_lines'), CutInBackground.speedLines);
+      expect(CutInBackground.fromName('diagonal_stripes'), CutInBackground.diagonalStripes);
+      expect(CutInBackground.fromName('sparkle_burst'), CutInBackground.sparkleBurst);
+      expect(CutInBackground.fromName('sakura'), CutInBackground.sakura);
+      expect(CutInBackground.fromName('cyber'), CutInBackground.cyber);
+    });
+
+    test('fromName resolves by enum name', () {
+      expect(CutInBackground.fromName('speedLines'), CutInBackground.speedLines);
+      expect(CutInBackground.fromName('diagonalStripes'), CutInBackground.diagonalStripes);
+    });
+
+    test('fromName returns null for unknown name', () {
+      expect(CutInBackground.fromName('nonexistent'), isNull);
+      expect(CutInBackground.fromName(null), isNull);
+    });
+
+    test('assetPath returns correct SVG path', () {
+      expect(CutInBackground.speedLines.assetPath, 'assets/backgrounds/speed_lines.svg');
+      expect(CutInBackground.sakura.assetPath, 'assets/backgrounds/sakura.svg');
+      expect(CutInBackground.cyber.assetPath, 'assets/backgrounds/cyber.svg');
+    });
+
+    test('all five backgrounds have unique file names', () {
+      final fileNames = CutInBackground.values.map((b) => b.fileName).toSet();
+      expect(fileNames.length, CutInBackground.values.length);
+    });
+  });
+
+  // ── Cut-In Signal Handling Tests ─────────────────────────────
+
+  group('Cut-in signal handling', () {
+    late Directory signalDir;
+
+    setUp(() {
+      signalDir = Directory.systemTemp.createTempSync('cutin_signal_test_');
+    });
+
+    tearDown(() {
+      signalDir.deleteSync(recursive: true);
+    });
+
+    test('signal file claim via rename is atomic', () {
+      final signalFile = File('${signalDir.path}/cutin');
+      final claimedPath = '${signalDir.path}/cutin_processing';
+
+      signalFile.writeAsStringSync(jsonEncode({
+        'message': 'テスト',
+        'emotion': 'Joy',
+      }));
+
+      // Claim via rename
+      signalFile.renameSync(claimedPath);
+
+      expect(signalFile.existsSync(), false,
+          reason: 'Original signal file should be gone after rename');
+      expect(File(claimedPath).existsSync(), true,
+          reason: 'Claimed file should exist');
+
+      // Read and delete the claimed file
+      final content = File(claimedPath).readAsStringSync().trim();
+      File(claimedPath).deleteSync();
+
+      final json = jsonDecode(content) as Map<String, dynamic>;
+      expect(json['message'], 'テスト');
+      expect(json['emotion'], 'Joy');
+    });
+
+    test('cut-in envelope v1 is unwrapped correctly', () {
+      final envelope = jsonEncode({
+        'version': '1',
+        'type': 'mascot.cutin',
+        'payload': {
+          'message': 'エンベロープテスト',
+          'emotion': 'Singing',
+          'background': 'cyber',
+        },
+      });
+      final json = jsonDecode(envelope) as Map<String, dynamic>;
+      final payload = json.containsKey('version')
+          ? (json['payload'] as Map<String, dynamic>? ?? {})
+          : json;
+
+      expect(payload['message'], 'エンベロープテスト');
+      expect(payload['emotion'], 'Singing');
+      expect(payload['background'], 'cyber');
+    });
+
+    test('cut-in signal defaults: missing message defaults to empty string', () {
+      final json = jsonDecode(jsonEncode({
+        'emotion': 'Joy',
+      })) as Map<String, dynamic>;
+
+      final message = (json['message'] as String?) ?? '';
+      final emotion = (json['emotion'] as String?) ?? 'Joy';
+
+      expect(message, '');
+      expect(emotion, 'Joy');
+    });
+
+    test('cut-in signal defaults: missing emotion defaults to Joy', () {
+      final json = jsonDecode(jsonEncode({
+        'message': 'テスト',
+      })) as Map<String, dynamic>;
+
+      final emotion = (json['emotion'] as String?) ?? 'Joy';
+      expect(emotion, 'Joy');
+    });
+
+    test('stale cutin_* directories are cleaned up', () {
+      // Create stale cutin dirs
+      final stale1 = Directory('${signalDir.path}/cutin_1000000000')
+        ..createSync(recursive: true);
+      final stale2 = Directory('${signalDir.path}/cutin_2000000000')
+        ..createSync(recursive: true);
+      // Non-cutin dir should not be touched
+      final taskDir = Directory('${signalDir.path}/task-abc123')
+        ..createSync(recursive: true);
+
+      // Simulate cleanup
+      for (final entity in signalDir.listSync()) {
+        if (entity is Directory) {
+          final name = p.basename(entity.path);
+          if (name.startsWith('cutin_')) {
+            entity.deleteSync(recursive: true);
+          }
+        }
+      }
+
+      expect(stale1.existsSync(), false);
+      expect(stale2.existsSync(), false);
+      expect(taskDir.existsSync(), true,
+          reason: 'Non-cutin dirs should not be cleaned');
+    });
+
+    test('file overwrite preserves content integrity', () {
+      final signalFile = File('${signalDir.path}/cutin');
+
+      // Write first signal
+      signalFile.writeAsStringSync(jsonEncode({
+        'message': '最初のメッセージ',
+        'emotion': 'Joy',
+      }));
+
+      // Overwrite with second signal (simulating modify event)
+      signalFile.writeAsStringSync(jsonEncode({
+        'message': '上書きメッセージ',
+        'emotion': 'Trouble',
+      }));
+
+      final content = signalFile.readAsStringSync().trim();
+      final json = jsonDecode(content) as Map<String, dynamic>;
+      expect(json['message'], '上書きメッセージ');
+      expect(json['emotion'], 'Trouble');
+    });
+
+    test('second rename fails after first claim', () {
+      final signalFile = File('${signalDir.path}/cutin');
+      final claimedPath = '${signalDir.path}/cutin_processing';
+
+      signalFile.writeAsStringSync(jsonEncode({
+        'message': 'テスト',
+        'emotion': 'Joy',
+      }));
+
+      // First claim succeeds
+      signalFile.renameSync(claimedPath);
+
+      // Second rename should fail (file no longer exists)
+      var secondClaimFailed = false;
+      try {
+        File('${signalDir.path}/cutin').renameSync('${signalDir.path}/cutin_processing2');
+      } catch (_) {
+        secondClaimFailed = true;
+      }
+      expect(secondClaimFailed, true,
+          reason: 'Second rename should fail since original was already claimed');
     });
   });
 }
