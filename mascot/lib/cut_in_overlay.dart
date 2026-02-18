@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io' as io;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:path/path.dart' as p;
 import 'package:utsutsu2d/utsutsu2d.dart' hide Animation;
@@ -91,8 +93,11 @@ class _CutInOverlayState extends State<CutInOverlay>
   // Flash overlay for dramatic entrance
   late final AnimationController _flashController;
 
+  static const _windowReadyChannel = MethodChannel('mascot/window_ready');
+
   PuppetController? _puppetController;
   bool _modelLoaded = false;
+  final Completer<void> _modelReady = Completer<void>();
   final TtsService _tts = TtsService();
 
   @override
@@ -188,50 +193,85 @@ class _CutInOverlayState extends State<CutInOverlay>
           _modelLoaded = true;
         });
       }
+      if (!_modelReady.isCompleted) _modelReady.complete();
     } catch (e) {
       debugPrint('CutInOverlay: failed to load model: $e');
+      if (!_modelReady.isCompleted) _modelReady.complete();
     }
   }
 
   Future<void> _startSequence() async {
+    debugPrint('[CutIn] _startSequence: begin');
+    // Signal native window to become visible (alphaValue 0 → 1)
+    _windowReadyChannel.invokeMethod('show');
+    debugPrint('[CutIn] Window alpha set to 1');
+
     // Set emotion on the controller
     widget.controller.showExpression(widget.emotion, widget.message);
 
     // Phase 1: Background slides in
+    debugPrint('[CutIn] Phase 1: BG slide in');
     await _bgController.forward();
+    if (!mounted) { debugPrint('[CutIn] unmounted after BG'); return; }
 
     // Flash
-    _flashController.forward().then((_) => _flashController.reverse());
+    _flashController.forward().then((_) {
+      if (mounted) _flashController.reverse();
+    });
+
+    // Wait for model to load before showing character (up to 3 seconds)
+    debugPrint('[CutIn] Waiting for model load...');
+    try {
+      await _modelReady.future.timeout(const Duration(seconds: 3));
+      debugPrint('[CutIn] Model ready (loaded=$_modelLoaded)');
+    } catch (_) {
+      debugPrint('[CutIn] Model load timed out, proceeding anyway');
+    }
+    if (!mounted) { debugPrint('[CutIn] unmounted after model wait'); return; }
 
     // Phase 2: Character slides in
+    debugPrint('[CutIn] Phase 2: Char slide in');
     await _charController.forward();
+    if (!mounted) { debugPrint('[CutIn] unmounted after char'); return; }
 
     // Phase 3: Text appears
+    debugPrint('[CutIn] Phase 3: Text fade in');
     await _textController.forward();
+    if (!mounted) { debugPrint('[CutIn] unmounted after text'); return; }
 
     // Phase 4: Hold for TTS or fixed duration
+    debugPrint('[CutIn] Phase 4: Hold (TTS check)');
     bool ttsPlayed = false;
     try {
       if (await _tts.isAvailable()) {
+        debugPrint('[CutIn] TTS available, synthesizing...');
         await _tts.synthesizeAndPlay(widget.message);
         ttsPlayed = true;
+        debugPrint('[CutIn] TTS playback done');
+      } else {
+        debugPrint('[CutIn] TTS not available');
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[CutIn] TTS error: $e');
+    }
 
     if (!ttsPlayed) {
       // Hold based on message length
       final holdMs = (widget.message.length * 120).clamp(2000, 5000);
+      debugPrint('[CutIn] Holding for ${holdMs}ms');
       await Future<void>.delayed(Duration(milliseconds: holdMs));
     } else {
       // Brief linger after TTS
       await Future<void>.delayed(const Duration(milliseconds: 500));
     }
 
-    if (!mounted) return;
+    if (!mounted) { debugPrint('[CutIn] unmounted after hold'); return; }
 
     // Phase 5: Exit
+    debugPrint('[CutIn] Phase 5: Exit slide out');
     await _exitController.forward();
 
+    debugPrint('[CutIn] Sequence complete, calling onComplete');
     widget.controller.hideExpression();
     widget.onComplete?.call();
   }
