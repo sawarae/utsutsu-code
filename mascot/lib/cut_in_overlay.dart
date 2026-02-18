@@ -153,11 +153,16 @@ class _CutInOverlayState extends State<CutInOverlay>
   Future<void> _loadModel() async {
     try {
       final config = widget.controller.modelConfig;
-      final file = io.File(config.modelFilePath);
+      // Prefer cut-in specific model if configured and available
+      final cutinPath = config.cutinModelFilePath;
+      final modelPath = (cutinPath != null && io.File(cutinPath).existsSync())
+          ? cutinPath
+          : config.modelFilePath;
+      final file = io.File(modelPath);
       if (!file.existsSync()) return;
 
       final bytes = file.readAsBytesSync();
-      final fileName = p.basename(config.modelFilePath);
+      final fileName = p.basename(modelPath);
       final model = ModelLoader.loadFromBytes(bytes, fileName);
 
       final textures = <ui.Image>[];
@@ -170,11 +175,11 @@ class _CutInOverlayState extends State<CutInOverlay>
       final pc = PuppetController();
       await pc.loadModel(model, textures);
 
-      // Set camera for a large, dramatic cut-in pose (shifted down)
+      // Set camera for a large, dramatic cut-in pose
       final camera = pc.camera;
       if (camera != null) {
-        camera.zoom = config.cameraZoom * 2.5;
-        camera.position = Vec2(0, config.cameraY * 0.8 - 650);
+        camera.zoom = config.cutinZoom ?? config.cameraZoom * 5.0;
+        camera.position = Vec2(0, config.cutinCameraY ?? config.cameraY * 0.8 - 650);
       }
 
       // Apply emotion parameters
@@ -287,8 +292,8 @@ class _CutInOverlayState extends State<CutInOverlay>
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
-    // Character takes roughly 65% of width, text area the rest
-    final charWidth = screenSize.width * 0.65;
+    final config = widget.controller.modelConfig;
+    final charWidth = screenSize.width * (config.cutinCharWidth ?? 0.65);
     final charHeight = screenSize.height;
 
     return Material(
