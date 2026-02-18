@@ -44,10 +44,19 @@ class MainFlutterWindow: NSWindow {
       binaryMessenger: flutterViewController.engine.binaryMessenger
     )
     readyChannel.setMethodCallHandler { [weak self] call, result in
-      if call.method == "show" {
+      switch call.method {
+      case "show":
         self?.alphaValue = 1
         result(nil)
-      } else {
+      case "setCloseBtnRect":
+        if let args = call.arguments as? [String: Double],
+           let left = args["left"], let top = args["top"], let size = args["size"] {
+          self?.closeBtnLeft = CGFloat(left)
+          self?.closeBtnTop = CGFloat(top)
+          self?.closeBtnSize = CGFloat(size)
+        }
+        result(nil)
+      default:
         result(FlutterMethodNotImplemented)
       }
     }
@@ -171,10 +180,11 @@ class MainFlutterWindow: NSWindow {
     }
   }
 
-  // Close button area in logical coordinates (must match Flutter's _closeBtn* constants)
-  private let closeBtnLeft: CGFloat = 228
-  private let closeBtnTop: CGFloat = 0
-  private let closeBtnSize: CGFloat = 36
+  // Close button area in logical coordinates, sent from Flutter via method channel.
+  // Defaults to an impossible rect so the exemption never fires until Flutter provides values.
+  private var closeBtnLeft: CGFloat = -1
+  private var closeBtnTop: CGFloat = -1
+  private var closeBtnSize: CGFloat = 0
 
   private func updateClickThrough() {
     // Don't toggle click-through while dragging

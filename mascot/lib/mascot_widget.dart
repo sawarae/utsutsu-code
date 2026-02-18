@@ -51,7 +51,7 @@ class _MascotWidgetState extends State<MascotWidget>
   static const _windowDragChannel = MethodChannel('mascot/window_drag');
 
   // Close button position/size in logical coordinates.
-  // Must match kCloseBtn* constants in flutter_window.h.
+  // Sent to native side via setCloseBtnRect for click-through exemption.
   static const _closeBtnLeft = 228.0;
   static const _closeBtnTop = 0.0;
   static const _closeBtnSize = 36.0;
@@ -176,6 +176,14 @@ class _MascotWidgetState extends State<MascotWidget>
         _modelFadeController.forward();
         // Signal native window to become visible (prevents yellow flash)
         _windowReadyChannel.invokeMethod('show');
+        // Send close button rect to native side for click-through exemption
+        if (!_isWander && io.Platform.isMacOS) {
+          _windowReadyChannel.invokeMethod('setCloseBtnRect', {
+            'left': _closeBtnLeft,
+            'top': _closeBtnTop,
+            'size': _closeBtnSize,
+          });
+        }
       }
     } catch (e) {
       debugPrint('Failed to load utsutsu2d model: $e');
