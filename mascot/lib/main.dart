@@ -1,12 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Directory, File, FileSystemEvent, Platform, Process, ProcessSignal, ProcessStartMode;
+import 'dart:io' show Directory, File, FileMode, FileSystemEvent, IOSink, Platform, Process, ProcessSignal, ProcessStartMode, exit;
 
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'cut_in_overlay.dart';
 import 'mascot_controller.dart';
 import 'mascot_widget.dart';
 import 'swarm/swarm_app.dart';
@@ -60,6 +61,90 @@ void main(List<String> args) async {
         model: config.model,
         screenWidth: screenSize.width,
         screenHeight: screenSize.height,
+      ),
+    ));
+    return;
+  }
+
+  // Cut-in mode: fullscreen dramatic overlay
+  if (config.cutIn) {
+    // Redirect debugPrint to a log file since detached process stdout is lost
+    IOSink? cutInLogSink;
+    if (config.signalDir != null) {
+      final logFile = File('${config.signalDir}/cutin_debug.log');
+      cutInLogSink = logFile.openWrite(mode: FileMode.append);
+      debugPrint = (String? message, {int? wrapWidth}) {
+        final ts = DateTime.now().toIso8601String();
+        cutInLogSink!.writeln('[$ts] $message');
+      };
+      debugPrint('CutIn subprocess started');
+    }
+    final primaryDisplay = await screenRetriever.getPrimaryDisplay();
+    final screenSize = primaryDisplay.size;
+
+    final windowOptions = WindowOptions(
+      size: screenSize,
+      backgroundColor: Colors.transparent,
+      titleBarStyle: TitleBarStyle.hidden,
+      windowButtonVisibility: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+    );
+
+    debugPrint('[CutIn] Screen size: $screenSize');
+
+    windowManager.waitUntilReadyToShow(windowOptions, () async {
+      debugPrint('[CutIn] Window ready to show, configuring...');
+      await windowManager.setBackgroundColor(Colors.transparent);
+      if (Platform.isMacOS) {
+        await windowManager.setClosable(false);
+        await windowManager.setMinimizable(false);
+        await windowManager.setMovable(false);
+      }
+      await windowManager.setIgnoreMouseEvents(true);
+      await windowManager.setVisibleOnAllWorkspaces(true);
+      await windowManager.show();
+      // Set size/position AFTER show() to override macOS window state restoration
+      await windowManager.setSize(screenSize);
+      await windowManager.setPosition(Offset.zero);
+      // Re-apply after a brief delay to defeat macOS frame restoration
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await windowManager.setSize(screenSize);
+      await windowManager.setPosition(Offset.zero);
+      // Ensure cut-in is above all other windows (including parent mascot)
+      await windowManager.setAlwaysOnTop(true);
+      await windowManager.focus();
+      debugPrint('[CutIn] Window shown: size=$screenSize, pos=0,0');
+    });
+
+    final controller = MascotController(
+      signalDir: config.signalDir,
+      modelsDir: config.modelsDir,
+      model: config.model,
+    );
+
+    final background = CutInBackground.fromName(config.cutInBackground)
+        ?? CutInBackground.forEmotion(config.cutInEmotion);
+
+    debugPrint('[CutIn] Starting app: message="${config.cutInMessage}", emotion=${config.cutInEmotion}, bg=$background');
+
+    runApp(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        scaffoldBackgroundColor: Colors.transparent,
+        canvasColor: Colors.transparent,
+      ),
+      home: CutInOverlay(
+        message: config.cutInMessage ?? '',
+        emotion: config.cutInEmotion ?? 'Joy',
+        background: background,
+        controller: controller,
+        onComplete: () async {
+          debugPrint('[CutIn] onComplete: closing window');
+          await cutInLogSink?.flush();
+          windowManager.close();
+          Future.delayed(const Duration(seconds: 1), () => exit(0));
+        },
       ),
     ));
     return;
@@ -139,6 +224,10 @@ class _AppConfig {
   final bool outline;
   final bool swarm;
   final bool collision;
+  final bool cutIn;
+  final String? cutInMessage;
+  final String? cutInEmotion;
+  final String? cutInBackground;
 
   const _AppConfig({
     this.modelsDir,
@@ -151,6 +240,10 @@ class _AppConfig {
     this.outline = true,
     this.swarm = false,
     this.collision = true,
+    this.cutIn = false,
+    this.cutInMessage,
+    this.cutInEmotion,
+    this.cutInBackground,
   });
 }
 
@@ -166,6 +259,10 @@ _AppConfig _parseArgs(List<String> args) {
   bool outline = true;
   bool swarm = false;
   bool collision = true;
+  bool cutIn = false;
+  String? cutInMessage;
+  String? cutInEmotion;
+  String? cutInBackground;
 
   for (var i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -193,6 +290,14 @@ _AppConfig _parseArgs(List<String> args) {
         swarm = true;
       case '--no-collision':
         collision = false;
+      case '--cutin':
+        cutIn = true;
+      case '--cutin-message':
+        if (i + 1 < args.length) cutInMessage = args[++i];
+      case '--cutin-emotion':
+        if (i + 1 < args.length) cutInEmotion = args[++i];
+      case '--cutin-background':
+        if (i + 1 < args.length) cutInBackground = args[++i];
     }
   }
 
@@ -207,6 +312,10 @@ _AppConfig _parseArgs(List<String> args) {
     outline: outline,
     swarm: swarm,
     collision: collision,
+    cutIn: cutIn,
+    cutInMessage: cutInMessage,
+    cutInEmotion: cutInEmotion,
+    cutInBackground: cutInBackground,
   );
 }
 
@@ -246,8 +355,10 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
   Timer? _childReaper;
   StreamSubscription<FileSystemEvent>? _spawnWatcher;
   late final String _spawnSignalPath;
+  late final String _cutInSignalPath;
   final List<Timer> _ttsTimers = [];
   _WanderChild? _swarmOverlay; // Single swarm overlay process
+  _WanderChild? _cutInProcess; // Active cut-in overlay process
   bool _cleanedUp = false;
 
   @override
@@ -273,9 +384,10 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
       _wanderController!.start();
     }
 
-    // Resolve spawn signal path from the main signal directory
+    // Resolve signal paths from the main signal directory
     final signalDir = widget.config.signalDir ?? _defaultSignalDir();
     _spawnSignalPath = '$signalDir/spawn_child';
+    _cutInSignalPath = '$signalDir/cutin';
 
     // Clean up zombie wander children from a previous (crashed) parent
     if (!widget.config.wander) {
@@ -355,9 +467,12 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     }
 
     try {
-      _spawnWatcher = dir.watch(events: FileSystemEvent.create).listen((event) {
+      _spawnWatcher = dir.watch(events: FileSystemEvent.create | FileSystemEvent.modify).listen((event) {
         if (event.path.endsWith('/spawn_child') || event.path.endsWith(r'\spawn_child')) {
           _checkSpawnSignal();
+        }
+        if (event.path.endsWith('/cutin') || event.path.endsWith(r'\cutin')) {
+          _checkCutInSignal();
         }
       }, onError: (_) {
         // Fallback to polling on watch error
@@ -368,13 +483,21 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     } catch (_) {
       _startSpawnPolling();
     }
+
+    // Check for signals that were written before the watcher was ready
+    // (e.g. left over from a crash, or written during startup)
+    _checkSpawnSignal();
+    _checkCutInSignal();
   }
 
   void _startSpawnPolling() {
     _spawnTimer?.cancel();
     _spawnTimer = Timer.periodic(
       const Duration(milliseconds: 200),
-      (_) => _checkSpawnSignal(),
+      (_) {
+        _checkSpawnSignal();
+        _checkCutInSignal();
+      },
     );
   }
 
@@ -447,7 +570,26 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
       debugPrint('Failed to clean orphaned task dirs: $e');
     }
 
-    // 3. Remove legacy _active_task_mascots tracking file
+    // 3. Clean stale cutin_* directories from previous cut-in processes
+    try {
+      final parentDir = Directory(signalDir);
+      if (parentDir.existsSync()) {
+        for (final entity in parentDir.listSync()) {
+          if (entity is Directory) {
+            final name = p.basename(entity.path);
+            if (!name.startsWith('cutin_')) continue;
+            try {
+              entity.deleteSync(recursive: true);
+              debugPrint('Cleaned stale cutin dir: ${entity.path}');
+            } catch (_) {}
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to clean stale cutin dirs: $e');
+    }
+
+    // 4. Remove legacy _active_task_mascots tracking file
     try {
       final legacyFile = File('$signalDir/_active_task_mascots');
       if (legacyFile.existsSync()) {
@@ -521,6 +663,97 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     } catch (e) {
       debugPrint('Failed to spawn child mascot: $e');
     }
+  }
+
+  /// Check for a cut-in signal file and launch the cut-in overlay process.
+  ///
+  /// Signal file format (JSON):
+  /// ```json
+  /// {"message": "デプロイ完了！", "emotion": "Joy", "background": "speed_lines"}
+  /// ```
+  void _checkCutInSignal() {
+    final file = File(_cutInSignalPath);
+    if (!file.existsSync()) {
+      return;
+    }
+    debugPrint('[CutIn] Signal file detected: ${file.path}');
+
+    // Don't launch another cut-in while one is active
+    if (_cutInProcess != null && _isProcessAlive(_cutInProcess!.pid)) {
+      debugPrint('[CutIn] Skipping: existing cut-in process still alive (pid=${_cutInProcess!.pid})');
+      return;
+    }
+
+    // Atomically claim the signal file
+    final claimedPath = '${_cutInSignalPath}_processing';
+    try {
+      file.renameSync(claimedPath);
+    } catch (e) {
+      debugPrint('[CutIn] Failed to claim signal file (already claimed?): $e');
+      return;
+    }
+
+    try {
+      final claimedFile = File(claimedPath);
+      final content = claimedFile.readAsStringSync().trim();
+      claimedFile.deleteSync();
+      debugPrint('[CutIn] Signal content: $content');
+
+      final json = jsonDecode(content) as Map<String, dynamic>;
+      final payload = json.containsKey('version')
+          ? (json['payload'] as Map<String, dynamic>? ?? {})
+          : json;
+
+      final message = (payload['message'] as String?) ?? '';
+      final emotion = (payload['emotion'] as String?) ?? 'Joy';
+      final background = payload['background'] as String?;
+
+      debugPrint('[CutIn] Launching: message="$message", emotion=$emotion, background=$background');
+      _launchCutIn(message: message, emotion: emotion, background: background);
+    } catch (e) {
+      debugPrint('[CutIn] Failed to process cut-in signal: $e');
+    }
+  }
+
+  void _launchCutIn({
+    required String message,
+    required String emotion,
+    String? background,
+  }) {
+    // Create an isolated signal directory for the cut-in subprocess
+    // so it doesn't consume the parent's mascot_speaking file.
+    final parentDir = widget.config.signalDir ?? _defaultSignalDir();
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final cutInSignalDir = '$parentDir/cutin_$timestamp';
+    Directory(cutInSignalDir).createSync(recursive: true);
+
+    final exe = Platform.resolvedExecutable;
+    final args = [
+      '--cutin',
+      '--cutin-message', message,
+      '--cutin-emotion', emotion,
+      '--signal-dir', cutInSignalDir,
+    ];
+    if (background != null) {
+      args.addAll(['--cutin-background', background]);
+    }
+    // Always pass resolved models dir so the subprocess can find the model
+    // even if _defaultModelsDir() resolution differs in the detached process.
+    final modelsDir = widget.config.modelsDir ?? _controller.modelConfig.modelDirPath;
+    final resolvedModelsDir = Directory(modelsDir).parent.path;
+    args.addAll(['--models-dir', resolvedModelsDir]);
+    if (widget.config.model != null) {
+      args.addAll(['--model', widget.config.model!]);
+    }
+    final exeDir = File(exe).parent.path;
+    Process.start(exe, args,
+        mode: ProcessStartMode.detached,
+        workingDirectory: exeDir).then((process) {
+      _cutInProcess = _WanderChild(pid: process.pid, signalDir: cutInSignalDir);
+      debugPrint('[CutIn] Launched cut-in overlay: pid=${process.pid}, signalDir=$cutInSignalDir');
+    }).catchError((e) {
+      debugPrint('[CutIn] Failed to launch cut-in overlay: $e');
+    });
   }
 
   /// Send initial TTS to a newly spawned child mascot after a short delay,
@@ -635,6 +868,18 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
         Process.killPid(_swarmOverlay!.pid);
       } catch (_) {}
       _swarmOverlay = null;
+    }
+    // Kill cut-in overlay process and clean up its signal directory
+    if (_cutInProcess != null) {
+      try {
+        Process.killPid(_cutInProcess!.pid);
+      } catch (_) {}
+      if (_cutInProcess!.signalDir.isNotEmpty) {
+        try {
+          Directory(_cutInProcess!.signalDir).deleteSync(recursive: true);
+        } catch (_) {}
+      }
+      _cutInProcess = null;
     }
     // Dismiss and kill all wander child processes
     for (final child in _wanderChildren) {

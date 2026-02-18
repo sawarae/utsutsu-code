@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#fff8e1"/>
+      <stop offset="40%" stop-color="#ffcc02"/>
+      <stop offset="100%" stop-color="#ff8f00"/>
+    </radialGradient>
+    <radialGradient id="center_glow" cx="50%" cy="50%" r="30%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <!-- 4-pointed star -->
+    <polygon id="star4" points="0,-20 5,-5 20,0 5,5 0,20 -5,5 -20,0 -5,-5" fill="#fff"/>
+    <!-- 6-pointed star -->
+    <polygon id="star6" points="0,-24 6,-8 22,-12 12,0 22,12 6,8 0,24 -6,8 -22,12 -12,0 -22,-12 -6,-8" fill="#fff"/>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <rect width="1920" height="1080" fill="url(#center_glow)"/>
+  <!-- Radial burst lines from center -->
+  <g transform="translate(960,540)" opacity="0.25">
+    <line x1="0" y1="0" x2="1000" y2="0" stroke="#fff" stroke-width="3"/>
+    <line x1="0" y1="0" x2="951" y2="309" stroke="#fff" stroke-width="2"/>
+    <line x1="0" y1="0" x2="809" y2="588" stroke="#fff" stroke-width="3"/>
+    <line x1="0" y1="0" x2="588" y2="809" stroke="#fff" stroke-width="2"/>
+    <line x1="0" y1="0" x2="309" y2="951" stroke="#fff" stroke-width="3"/>
+    <line x1="0" y1="0" x2="0" y2="1000" stroke="#fff" stroke-width="2"/>
+    <line x1="0" y1="0" x2="-309" y2="951" stroke="#fff" stroke-width="3"/>
+    <line x1="0" y1="0" x2="-588" y2="809" stroke="#fff" stroke-width="2"/>
+    <line x1="0" y1="0" x2="-809" y2="588" stroke="#fff" stroke-width="3"/>
+    <line x1="0" y1="0" x2="-951" y2="309" stroke="#fff" stroke-width="2"/>
+    <line x1="0" y1="0" x2="-1000" y2="0" stroke="#fff" stroke-width="3"/>
+    <line x1="0" y1="0" x2="-951" y2="-309" stroke="#fff" stroke-width="2"/>
+    <line x1="0" y1="0" x2="-809" y2="-588" stroke="#fff" stroke-width="3"/>
+    <line x1="0" y1="0" x2="-588" y2="-809" stroke="#fff" stroke-width="2"/>
+    <line x1="0" y1="0" x2="-309" y2="-951" stroke="#fff" stroke-width="3"/>
+    <line x1="0" y1="0" x2="0" y2="-1000" stroke="#fff" stroke-width="2"/>
+    <line x1="0" y1="0" x2="309" y2="-951" stroke="#fff" stroke-width="3"/>
+    <line x1="0" y1="0" x2="588" y2="-809" stroke="#fff" stroke-width="2"/>
+    <line x1="0" y1="0" x2="809" y2="-588" stroke="#fff" stroke-width="3"/>
+    <line x1="0" y1="0" x2="951" y2="-309" stroke="#fff" stroke-width="2"/>
+  </g>
+  <!-- Scattered sparkles -->
+  <use href="#star4" transform="translate(300,180) scale(1.2)" opacity="0.9"/>
+  <use href="#star6" transform="translate(1600,200) scale(0.8)" opacity="0.7"/>
+  <use href="#star4" transform="translate(200,800) scale(0.6)" opacity="0.6"/>
+  <use href="#star6" transform="translate(1700,850) scale(1.0)" opacity="0.8"/>
+  <use href="#star4" transform="translate(960,120) scale(1.5)" opacity="0.9"/>
+  <use href="#star6" transform="translate(500,500) scale(0.7)" opacity="0.5"/>
+  <use href="#star4" transform="translate(1400,600) scale(0.9)" opacity="0.7"/>
+  <use href="#star6" transform="translate(150,450) scale(0.5)" opacity="0.6"/>
+  <use href="#star4" transform="translate(1800,500) scale(0.8)" opacity="0.8"/>
+  <use href="#star6" transform="translate(700,900) scale(1.1)" opacity="0.7"/>
+  <use href="#star4" transform="translate(1200,950) scale(0.6)" opacity="0.5"/>
+  <use href="#star4" transform="translate(400,300) scale(0.4)" opacity="0.4"/>
+  <use href="#star6" transform="translate(1100,250) scale(0.6)" opacity="0.6"/>
+</svg>

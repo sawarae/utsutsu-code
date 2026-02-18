@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1a0a3e"/>
+      <stop offset="100%" stop-color="#2d1b69"/>
+    </linearGradient>
+    <pattern id="stripes" x="0" y="0" width="80" height="80" patternUnits="userSpaceOnUse" patternTransform="rotate(-30)">
+      <rect width="40" height="80" fill="#6c3baa" opacity="0.7"/>
+      <rect x="40" width="40" height="80" fill="transparent"/>
+    </pattern>
+    <linearGradient id="shine" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.08"/>
+      <stop offset="60%" stop-color="#ffffff" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <rect width="1920" height="1080" fill="url(#stripes)"/>
+  <!-- Horizontal shine band -->
+  <rect width="1920" height="1080" fill="url(#shine)"/>
+  <!-- Top and bottom accent bars -->
+  <rect y="0" width="1920" height="6" fill="#c084fc" opacity="0.8"/>
+  <rect y="1074" width="1920" height="6" fill="#c084fc" opacity="0.8"/>
+  <!-- Corner accents -->
+  <polygon points="0,0 200,0 0,120" fill="#8b5cf6" opacity="0.3"/>
+  <polygon points="1920,1080 1720,1080 1920,960" fill="#8b5cf6" opacity="0.3"/>
+</svg>

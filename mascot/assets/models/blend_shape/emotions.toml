@@ -4,11 +4,17 @@
 [model]
 name = "Blend Shape Example"
 file = "tsukuyomi_blend_shape.inp"
+cutin_file = "tsukuyomi_pipi_blendshape.inp"
 idle_emotion = "Gentle"
 
 [camera]
 zoom = 0.132
 y = -60.0
+
+[cutin]
+zoom = 0.66
+camera_y = -400.0
+char_width = 0.65
 
 [mouth]
 param = "MouthOpen"

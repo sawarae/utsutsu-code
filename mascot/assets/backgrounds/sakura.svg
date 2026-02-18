@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fce4ec"/>
+      <stop offset="50%" stop-color="#f8bbd0"/>
+      <stop offset="100%" stop-color="#f48fb1"/>
+    </linearGradient>
+    <!-- Sakura petal shape -->
+    <path id="petal" d="M0,-12 C4,-10 8,-4 6,0 C4,4 1,6 0,8 C-1,6 -4,4 -6,0 C-8,-4 -4,-10 0,-12Z" fill="#fff" fill-opacity="0.7"/>
+    <!-- 5-petal flower -->
+    <g id="flower">
+      <use href="#petal" transform="rotate(0)"/>
+      <use href="#petal" transform="rotate(72)"/>
+      <use href="#petal" transform="rotate(144)"/>
+      <use href="#petal" transform="rotate(216)"/>
+      <use href="#petal" transform="rotate(288)"/>
+      <circle r="3" fill="#ffcc80"/>
+    </g>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <!-- Soft circular glow -->
+  <circle cx="960" cy="540" r="500" fill="#fff" fill-opacity="0.15"/>
+  <!-- Scattered sakura flowers -->
+  <use href="#flower" transform="translate(150,100) scale(2.5)" opacity="0.8"/>
+  <use href="#flower" transform="translate(400,250) scale(1.8)" opacity="0.6"/>
+  <use href="#flower" transform="translate(250,700) scale(2.0)" opacity="0.7"/>
+  <use href="#flower" transform="translate(1650,150) scale(2.2)" opacity="0.7"/>
+  <use href="#flower" transform="translate(1500,400) scale(1.5)" opacity="0.5"/>
+  <use href="#flower" transform="translate(1750,800) scale(2.8)" opacity="0.8"/>
+  <use href="#flower" transform="translate(800,80) scale(1.6)" opacity="0.5"/>
+  <use href="#flower" transform="translate(1100,950) scale(2.0)" opacity="0.6"/>
+  <use href="#flower" transform="translate(600,600) scale(1.2)" opacity="0.4"/>
+  <use href="#flower" transform="translate(1300,300) scale(1.4)" opacity="0.5"/>
+  <!-- Floating individual petals -->
+  <use href="#petal" transform="translate(500,150) rotate(30) scale(2)" opacity="0.5"/>
+  <use href="#petal" transform="translate(900,300) rotate(-20) scale(1.8)" opacity="0.4"/>
+  <use href="#petal" transform="translate(1200,180) rotate(60) scale(2.2)" opacity="0.5"/>
+  <use href="#petal" transform="translate(350,500) rotate(-45) scale(1.5)" opacity="0.4"/>
+  <use href="#petal" transform="translate(1600,600) rotate(15) scale(2.0)" opacity="0.5"/>
+  <use href="#petal" transform="translate(700,800) rotate(-30) scale(1.7)" opacity="0.4"/>
+  <use href="#petal" transform="translate(1400,750) rotate(50) scale(1.3)" opacity="0.3"/>
+  <use href="#petal" transform="translate(100,400) rotate(-10) scale(1.8)" opacity="0.4"/>
+  <use href="#petal" transform="translate(1850,350) rotate(40) scale(1.6)" opacity="0.4"/>
+  <!-- Bottom accent line -->
+  <rect y="1060" width="1920" height="4" fill="#e91e63" opacity="0.3"/>
+  <rect y="1066" width="1920" height="2" fill="#e91e63" opacity="0.15"/>
+</svg>
