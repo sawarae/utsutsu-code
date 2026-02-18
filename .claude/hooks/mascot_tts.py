@@ -429,6 +429,7 @@ class GenieTtsAdapter:
             logging.error("genie-tts-en binary not found at %s", binary)
             return False
 
+        wav_path = None
         try:
             write_signal(text, emotion)
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
@@ -451,10 +452,11 @@ class GenieTtsAdapter:
             return False
         finally:
             clear_signal()
-            try:
-                os.unlink(wav_path)
-            except Exception:
-                pass
+            if wav_path:
+                try:
+                    os.unlink(wav_path)
+                except Exception:
+                    pass
 
 
 class NoneAdapter:

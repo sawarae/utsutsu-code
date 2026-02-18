@@ -442,14 +442,4 @@ class _CutInOverlayState extends State<CutInOverlay>
     };
   }
 
-  String get _emotionLabel {
-    return switch (widget.emotion) {
-      'Gentle' => '穏やか',
-      'Joy' => '喜び',
-      'Blush' => '照れ',
-      'Trouble' => '困惑',
-      'Singing' => 'ノリノリ',
-      _ => widget.emotion,
-    };
-  }
 }
