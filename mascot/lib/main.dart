@@ -111,6 +111,8 @@ void main(List<String> args) async {
       await Future<void>.delayed(const Duration(milliseconds: 50));
       await windowManager.setSize(screenSize);
       await windowManager.setPosition(Offset.zero);
+      // Ensure cut-in is above all other windows (including parent mascot)
+      await windowManager.setAlwaysOnTop(true);
       await windowManager.focus();
       debugPrint('[CutIn] Window shown: size=$screenSize, pos=0,0');
     });
