@@ -170,11 +170,11 @@ class _CutInOverlayState extends State<CutInOverlay>
       final pc = PuppetController();
       await pc.loadModel(model, textures);
 
-      // Set camera for a left-aligned standing pose
+      // Set camera for a large, dramatic cut-in pose (shifted down)
       final camera = pc.camera;
       if (camera != null) {
-        camera.zoom = config.cameraZoom;
-        camera.position = Vec2(0, config.cameraY);
+        camera.zoom = config.cameraZoom * 2.5;
+        camera.position = Vec2(0, config.cameraY * 0.8 - 650);
       }
 
       // Apply emotion parameters
@@ -291,8 +291,8 @@ class _CutInOverlayState extends State<CutInOverlay>
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
-    // Character takes roughly 35% of width, text area the rest
-    final charWidth = screenSize.width * 0.35;
+    // Character takes roughly 65% of width, text area the rest
+    final charWidth = screenSize.width * 0.65;
     final charHeight = screenSize.height;
 
     return Material(
@@ -390,66 +390,41 @@ class _CutInOverlayState extends State<CutInOverlay>
   }
 
   Widget _buildDialogue(Size screenSize) {
-    final fontSize = (screenSize.height * 0.06).clamp(28.0, 72.0);
+    final fontSize = (screenSize.height * 0.09).clamp(40.0, 108.0);
 
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
         children: [
-          // Emotion label / name plate
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            decoration: BoxDecoration(
-              color: _accentColor.withOpacity(0.9),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              _emotionLabel,
-              style: TextStyle(
-                fontSize: fontSize * 0.35,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-                decoration: TextDecoration.none,
-              ),
+          // Text stroke (outline)
+          Text(
+            widget.message,
+            style: TextStyle(
+              fontSize: fontSize,
+              fontWeight: FontWeight.w900,
+              foreground: Paint()
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 5
+                ..color = Colors.black.withOpacity(0.8),
+              decoration: TextDecoration.none,
+              height: 1.3,
             ),
           ),
-          const SizedBox(height: 16),
-          // Main dialogue text with stroke
-          Stack(
-            children: [
-              // Text stroke (outline)
-              Text(
-                widget.message,
-                style: TextStyle(
-                  fontSize: fontSize,
-                  fontWeight: FontWeight.w900,
-                  foreground: Paint()
-                    ..style = PaintingStyle.stroke
-                    ..strokeWidth = 4
-                    ..color = Colors.black.withOpacity(0.8),
-                  decoration: TextDecoration.none,
-                  height: 1.3,
+          // Text fill
+          Text(
+            widget.message,
+            style: TextStyle(
+              fontSize: fontSize,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              decoration: TextDecoration.none,
+              shadows: [
+                Shadow(
+                  color: _accentColor.withOpacity(0.6),
+                  blurRadius: 20,
                 ),
-              ),
-              // Text fill
-              Text(
-                widget.message,
-                style: TextStyle(
-                  fontSize: fontSize,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                  decoration: TextDecoration.none,
-                  shadows: [
-                    Shadow(
-                      color: _accentColor.withOpacity(0.6),
-                      blurRadius: 20,
-                    ),
-                  ],
-                  height: 1.3,
-                ),
-              ),
-            ],
+              ],
+              height: 1.3,
+            ),
           ),
         ],
       ),
