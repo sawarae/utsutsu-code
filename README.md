@@ -30,6 +30,9 @@ Claude Codeで `/tsukuyomi-setup` を実行すると、前提条件チェック�
 4. 任意の場所に展開
 5. `mascot.exe` を起動
 
+> **注意:** Windows の Smart App Control が有効な場合、未署名の exe がブロックされます。
+> 設定 → プライバシーとセキュリティ → Windows セキュリティ → アプリとブラウザーの制御 → Smart App Control をオフにしてください。
+
 その後、`.claude` ディレクトリの内容を開発用のプロジェクト内にコピーしてください。
 
 #### macOS — 手動で行う場合:
