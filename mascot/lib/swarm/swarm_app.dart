@@ -161,8 +161,8 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
       _spawnWatcher = dir
           .watch(events: FileSystemEvent.create | FileSystemEvent.modify)
           .listen((event) {
-        if (event.path.endsWith('/spawn_child') || event.path.endsWith(r'\spawn_child')) {
-          _checkSpawnSignal();
+        if (event.path.contains('spawn_child')) {
+          _checkSpawnSignals();
         }
       }, onError: (_) {
         _spawnWatcher?.cancel();
@@ -172,23 +172,34 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
     } catch (_) {
       _startSpawnPolling();
     }
-    // Check for a signal that was written before the watcher started
-    _checkSpawnSignal();
+    // Check for signals that were written before the watcher started
+    _checkSpawnSignals();
   }
 
   void _startSpawnPolling() {
     _spawnPollingTimer?.cancel();
     _spawnPollingTimer = Timer.periodic(
       const Duration(milliseconds: 200),
-      (_) => _checkSpawnSignal(),
+      (_) => _checkSpawnSignals(),
     );
   }
 
-  void _checkSpawnSignal() {
-    final file = File(_spawnSignalPath);
-    if (!file.existsSync()) return;
+  /// Scan for all spawn_child_* signal files and process each one.
+  void _checkSpawnSignals() {
+    final dir = Directory(widget.signalDir);
+    if (!dir.existsSync()) return;
 
-    final claimedPath = '${_spawnSignalPath}_processing';
+    final spawnFiles = dir.listSync().whereType<File>().where(
+          (f) => f.uri.pathSegments.last.startsWith('spawn_child_'),
+        );
+
+    for (final file in spawnFiles) {
+      _processSpawnFile(file);
+    }
+  }
+
+  void _processSpawnFile(File file) {
+    final claimedPath = '${file.path}_processing';
     try {
       file.renameSync(claimedPath);
     } catch (_) {
@@ -212,7 +223,7 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
       if (dismissFile.existsSync()) dismissFile.deleteSync();
 
       // Add entity to swarm
-      final entity = _simulation.addEntity(signalDir: signalDir);
+      _simulation.addEntity(signalDir: signalDir);
 
       // Restart signal monitor with updated entity list
       _signalMonitor.start(_simulation.entities);

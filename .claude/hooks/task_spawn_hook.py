@@ -71,23 +71,14 @@ def main():
         with open(mapping_path, "w") as f:
             f.write(task_id)
 
-    # Spawn signal: envelope format v1 (parent decides policy)
-    spawn_signal = os.path.join(parent_dir, "spawn_child")
+    # Spawn signal: per-task file to avoid overwrite on parallel spawns
+    spawn_signal = os.path.join(parent_dir, f"spawn_child_{task_id}")
     with open(spawn_signal, "w", encoding="utf-8") as f:
         json.dump({
             "version": "1",
             "type": "mascot.spawn",
             "payload": {"task_id": task_id},
         }, f)
-
-    # Track task_id by tool_use_id for dismiss hook
-    tool_use_id = data.get("tool_use_id", "")
-    if tool_use_id:
-        tracking_dir = os.path.join(parent_dir, "_tracking")
-        os.makedirs(tracking_dir, exist_ok=True)
-        tracking_file = os.path.join(tracking_dir, tool_use_id)
-        with open(tracking_file, "w") as f:
-            f.write(task_id)
 
     # Inject --signal-dir into the prompt (compact to reduce token overhead)
     inject = (
