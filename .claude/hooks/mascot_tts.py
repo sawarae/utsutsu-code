@@ -606,7 +606,10 @@ def main():
         parent_dir = os.path.expanduser("~/.claude/utsutsu-code")
         spawn_signal = os.path.join(parent_dir, "spawn_child")
         os.makedirs(parent_dir, exist_ok=True)
-        payload = {"signal_dir": signal_dir}
+        # Dart expects {"task_id": "xxx"} and constructs signal dir as task-{id}
+        basename = os.path.basename(signal_dir)
+        task_id = basename[5:] if basename.startswith("task-") else basename
+        payload = {"task_id": task_id}
         if spawn_model:
             payload["model"] = spawn_model
         Path(spawn_signal).write_text(json.dumps(payload), encoding="utf-8")

@@ -206,6 +206,12 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     double logical_y = local_y / scale;
 
     if (IsPointInOpaqueRegion(logical_x, logical_y)) {
+      // Close button area: return HTCLIENT so WM_LBUTTONUP fires
+      // (HTCAPTION would start a drag instead of dispatching the click).
+      if (logical_x >= kCloseBtnLeft && logical_x < kCloseBtnRight &&
+          logical_y >= kCloseBtnTop && logical_y < kCloseBtnBottom) {
+        return HTCLIENT;
+      }
       // When native drag is disabled (wander mode), return HTCLIENT so
       // Flutter GestureDetector receives the mouse events for drag/throw.
       return drag_enabled_ ? HTCAPTION : HTCLIENT;
