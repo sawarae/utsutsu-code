@@ -802,7 +802,7 @@ void main() {
     });
 
     test('new format: task_id only produces valid signal dir path', () {
-      final spawnFile = File('${signalDir.path}/spawn_child');
+      final spawnFile = File('${signalDir.path}/spawn_child_abc12345');
       spawnFile.writeAsStringSync(jsonEncode({'task_id': 'abc12345'}));
 
       final content = spawnFile.readAsStringSync().trim();

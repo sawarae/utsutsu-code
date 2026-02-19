@@ -470,8 +470,8 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
       _spawnWatcher = dir
           .watch(events: FileSystemEvent.create | FileSystemEvent.modify)
           .listen((event) {
-        if (event.path.endsWith('/spawn_child') || event.path.endsWith(r'\spawn_child')) {
-          _checkSpawnSignal();
+        if (event.path.contains('spawn_child')) {
+          _checkSpawnSignals();
         }
         if (event.path.endsWith('/cutin') || event.path.endsWith(r'\cutin')) {
           _checkCutInSignal();
@@ -488,7 +488,7 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
 
     // Check for signals that were written before the watcher was ready
     // (e.g. left over from a crash, or written during startup)
-    _checkSpawnSignal();
+    _checkSpawnSignals();
     _checkCutInSignal();
   }
 
@@ -497,7 +497,7 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     _spawnTimer = Timer.periodic(
       const Duration(milliseconds: 200),
       (_) {
-        _checkSpawnSignal();
+        _checkSpawnSignals();
         _checkCutInSignal();
       },
     );
@@ -614,15 +614,26 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     } catch (_) {}
   }
 
-  void _checkSpawnSignal() {
-    final file = File(_spawnSignalPath);
-    if (!file.existsSync()) return;
+  /// Scan for all spawn_child_* signal files and process each one.
+  /// Each file is named spawn_child_{task_id} to avoid overwrites on
+  /// parallel subagent launches.
+  void _checkSpawnSignals() {
+    final signalDir = widget.config.signalDir ?? _defaultSignalDir();
+    final dir = Directory(signalDir);
+    if (!dir.existsSync()) return;
 
+    final spawnFiles = dir.listSync().whereType<File>().where(
+          (f) => f.uri.pathSegments.last.startsWith('spawn_child_'),
+        );
+
+    for (final file in spawnFiles) {
+      _processSpawnFile(file);
+    }
+  }
+
+  void _processSpawnFile(File file) {
     // In swarm mode, don't consume the signal — just ensure the overlay
     // is running and let it handle all spawn signals directly.
-    // Swarm overlay is not yet supported on Windows (fullscreen transparent
-    // overlay requires additional DWM/layered-window work), so always use
-    // individual wander child processes there.
     if (!Platform.isWindows && _wc.maxChildren > _wc.swarmThreshold) {
       if (_swarmOverlay == null) {
         _launchSwarmOverlay('blend_shape_mini');
@@ -631,7 +642,7 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     }
 
     // Non-swarm mode: atomically claim the signal file
-    final claimedPath = '${_spawnSignalPath}_processing';
+    final claimedPath = '${file.path}_processing';
     try {
       file.renameSync(claimedPath);
     } catch (_) {
