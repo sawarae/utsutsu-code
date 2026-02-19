@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -c \"python3 ~\\.claude\\hooks\\task_spawn_hook.py\"",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -c \"python3 ~\\.claude\\hooks\\task_dismiss_hook.py\"",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}
