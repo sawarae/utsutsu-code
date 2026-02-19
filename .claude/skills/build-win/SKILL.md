@@ -72,7 +72,7 @@ python3 ~/.claude/hooks/mascot_tts.py --emotion Joy "ウィンドウズビルド
 `mascot/build/utsutsu-code-windows.zip` に以下を含む（`build/` は .gitignore 済み）:
 
 ```
-mascot.exe
+utsutsu_code.exe
 flutter_windows.dll
 screen_retriever_plugin.dll
 window_manager_plugin.dll
@@ -90,4 +90,4 @@ data/
     *.inp
 ```
 
-ユーザーは zip を展開して `mascot.exe` をそのまま実行できる。
+ユーザーは zip を展開して `utsutsu_code.exe` をそのまま実行できる。
