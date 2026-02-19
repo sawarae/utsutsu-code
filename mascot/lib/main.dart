@@ -467,7 +467,9 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     }
 
     try {
-      _spawnWatcher = dir.watch(events: FileSystemEvent.create | FileSystemEvent.modify).listen((event) {
+      _spawnWatcher = dir
+          .watch(events: FileSystemEvent.create | FileSystemEvent.modify)
+          .listen((event) {
         if (event.path.endsWith('/spawn_child') || event.path.endsWith(r'\spawn_child')) {
           _checkSpawnSignal();
         }
