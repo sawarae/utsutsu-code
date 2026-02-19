@@ -42,7 +42,7 @@ def main():
                 ["tasklist"],
                 capture_output=True, text=True, timeout=2,
             )
-            if "mascot.exe" not in result.stdout.lower():
+            if "utsutsu_code.exe" not in result.stdout.lower():
                 return
         else:
             result = subprocess.run(

@@ -99,8 +99,8 @@ cd mascot && flutter run -d macos &
 1. exe の場所を確認する:
 ```bash
 # よくある配置先
-ls ~/Desktop/utsutsu-code-windows/mascot.exe 2>/dev/null || \
-ls ~/Downloads/utsutsu-code-windows/mascot.exe 2>/dev/null || \
+ls ~/Desktop/utsutsu-code-windows/utsutsu_code.exe 2>/dev/null || \
+ls ~/Downloads/utsutsu-code-windows/utsutsu_code.exe 2>/dev/null || \
 echo "EXE_NOT_FOUND"
 ```
 

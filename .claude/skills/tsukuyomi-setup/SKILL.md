@@ -277,7 +277,7 @@ python3 .claude/skills/tsukuyomi-setup/setup_helper.py check-release
 3. ブラウザが開いたら、以下の手順を案内する:
    1. Assets セクションの `utsutsu-code-windows.zip` をクリックしてダウンロード
    2. zipを右クリック →「すべて展開」で解凍（ダブルクリックで中身を見るだけでは動かない）
-   3. 展開されたフォルダ内の `mascot.exe` をダブルクリックして起動
+   3. 展開されたフォルダ内の `utsutsu_code.exe` をダブルクリックして起動
 
 アプリが起動したら、`/tts マスコット動いてるよ` で口パク・吹き出しの動作確認を案内する。
 
