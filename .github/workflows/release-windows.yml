@@ -1,5 +1,9 @@
 name: Release Windows Build
 
+# NOTE: リリースは feature/win ブランチから行う（mainではない）。
+# タグは feature/win の HEAD に付けて push する。
+# 例: git tag v0.04 feature/win && git push origin v0.04
+
 on:
   push:
     tags:
