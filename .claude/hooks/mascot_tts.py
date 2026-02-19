@@ -27,7 +27,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-HOOK_TIMEOUT = 1  # seconds for availability check
+HOOK_TIMEOUT = 0.5  # seconds for availability check
 SYNTHESIS_TIMEOUT = 4  # seconds for synthesis
 LOG_DIR = os.path.expanduser("~/.claude/logs")
 LOG_FILE = os.path.join(LOG_DIR, "mascot_tts.log")
@@ -53,6 +53,16 @@ def setup_logging():
         level=logging.DEBUG,
         format="%(asctime)s %(levelname)s %(message)s",
     )
+
+
+def _tcp_check(host, port, timeout=HOOK_TIMEOUT):
+    """Fast TCP connect check (avoids DNS overhead of urllib)."""
+    import socket
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except (OSError, socket.timeout):
+        return False
 
 
 def api_request(base_url, path, data=None, timeout=HOOK_TIMEOUT):
@@ -193,6 +203,7 @@ def notify_fallback(message):
         )
     elif sys.platform == "win32":
         # Use -EncodedCommand to avoid all quoting/escaping issues
+        # Run in background (Popen) to avoid blocking
         script = (
             "Add-Type -AssemblyName System.Windows.Forms; "
             "$n = New-Object System.Windows.Forms.NotifyIcon; "
@@ -207,11 +218,11 @@ def notify_fallback(message):
         import base64
         encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
         env = {**os.environ, "MASCOT_MSG": message}
-        subprocess.run(
+        subprocess.Popen(
             ["powershell", "-EncodedCommand", encoded],
-            check=False,
-            timeout=5,
             env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
     else:
         # Linux: notify-send
@@ -253,15 +264,12 @@ class CoeiroinkAdapter:
     """COEIROINK v2 API adapter."""
 
     def __init__(self, port=COEIROINK_PORT, speaker_name=None):
-        self.base_url = f"http://localhost:{port}"
+        self.port = port
+        self.base_url = f"http://127.0.0.1:{port}"
         self.speaker_name = speaker_name
 
     def is_available(self):
-        try:
-            api_request(self.base_url, "/v1/speakers")
-            return True
-        except Exception:
-            return False
+        return _tcp_check("127.0.0.1", self.port)
 
     def find_speaker(self):
         """Find speaker by name. Returns (speakerUuid, styleId)."""
@@ -333,15 +341,12 @@ class VoicevoxAdapter:
     }
 
     def __init__(self, port=VOICEVOX_PORT, speaker_name=None):
-        self.base_url = f"http://localhost:{port}"
+        self.port = port
+        self.base_url = f"http://127.0.0.1:{port}"
         self.speaker_name = speaker_name
 
     def is_available(self):
-        try:
-            api_request(self.base_url, "/speakers")
-            return True
-        except Exception:
-            return False
+        return _tcp_check("127.0.0.1", self.port)
 
     def find_speaker_id(self, emotion=None):
         """Find speaker ID, optionally matching emotion to style."""
@@ -470,7 +475,7 @@ class NoneAdapter:
 
         write_signal(text, emotion)
         # Keep signal file for a brief moment so mascot can animate
-        time.sleep(1.0)
+        time.sleep(5.0)
         clear_signal()
         return True
 
@@ -495,10 +500,18 @@ def resolve_adapter(config, lang=None):
 
     if engine == "coeiroink":
         port = int(config.get("coeiroink_port", COEIROINK_PORT))
-        return CoeiroinkAdapter(port=port, speaker_name=speaker_name)
+        adapter = CoeiroinkAdapter(port=port, speaker_name=speaker_name)
+        if adapter.is_available():
+            return adapter
+        logging.warning("COEIROINK not available, falling back to signal-only")
+        return NoneAdapter()
     elif engine == "voicevox":
         port = int(config.get("voicevox_port", VOICEVOX_PORT))
-        return VoicevoxAdapter(port=port, speaker_name=speaker_name)
+        adapter = VoicevoxAdapter(port=port, speaker_name=speaker_name)
+        if adapter.is_available():
+            return adapter
+        logging.warning("VOICEVOX not available, falling back to signal-only")
+        return NoneAdapter()
     elif engine == "none":
         return NoneAdapter()
 
@@ -658,6 +671,12 @@ def main():
                     logging.warning("Speaker not found in %s", engine_name)
         except Exception as e:
             logging.error("TTS failed: %s", e)
+            # Write signal so mascot still shows bubble + lip-sync
+            try:
+                write_signal(message, emotion)
+                time.sleep(1.0)
+            finally:
+                clear_signal()
             if not muted:
                 try:
                     notify_fallback(message)
