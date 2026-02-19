@@ -158,7 +158,9 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
     final dir = Directory(widget.signalDir);
     if (!dir.existsSync()) dir.createSync(recursive: true);
     try {
-      _spawnWatcher = dir.watch(events: FileSystemEvent.create).listen((event) {
+      _spawnWatcher = dir
+          .watch(events: FileSystemEvent.create | FileSystemEvent.modify)
+          .listen((event) {
         if (event.path.endsWith('/spawn_child') || event.path.endsWith(r'\spawn_child')) {
           _checkSpawnSignal();
         }

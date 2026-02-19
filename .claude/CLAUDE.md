@@ -2,6 +2,15 @@
 
 Desktop mascot with lip-sync animation for AI coding assistants.
 
+## リリース
+
+Windows リリースは **`feature/win` ブランチ**から行う（mainではない）。
+タグを feature/win の HEAD に付けて push すると CI が自動でビルド・リリースする。
+
+```bash
+git tag v0.XX feature/win && git push origin v0.XX
+```
+
 ## つくよみちゃんTTS通知
 
 作業開始時と作業完了時に `python3 ~/.claude/hooks/mascot_tts.py --emotion KEY "要約(30文字以内)"` でつくよみちゃんに読み上げさせる。
