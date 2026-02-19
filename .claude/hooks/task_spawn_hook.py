@@ -24,11 +24,12 @@ def main():
         import subprocess
         import platform
         if platform.system() == "Windows":
+            # Avoid tasklist /FI — MSYS/Git Bash converts /FI to a path
             result = subprocess.run(
-                ["tasklist", "/FI", "IMAGENAME eq mascot.exe", "/NH"],
+                ["tasklist"],
                 capture_output=True, text=True, timeout=2,
             )
-            if "mascot.exe" not in result.stdout:
+            if "mascot.exe" not in result.stdout.lower():
                 return
         else:
             result = subprocess.run(
