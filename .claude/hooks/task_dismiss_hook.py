@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """PostToolUse hook for Task tool.
 
-Dismisses the child mascot by extracting the task_id from the prompt's
---signal-dir injection (set by task_spawn_hook.py) and writing mascot_dismiss.
+Dismisses the child mascot by looking up the task_id from a tracking file
+written by task_spawn_hook.py (keyed by tool_use_id).
+Falls back to extracting task_id from --signal-dir in the prompt.
 """
 
 import json
@@ -18,14 +19,27 @@ def main():
     if data.get("tool_name") != "Task":
         return
 
-    # Extract task_id from the --signal-dir path injected by spawn hook
-    prompt = data.get("tool_input", {}).get("prompt", "")
-    match = re.search(r"--signal-dir\s+\S+/task-([a-f0-9]+)", prompt)
-    if not match:
-        return  # no-op: mascot was not spawned for this task
-
-    task_id = match.group(1)
     parent_dir = os.path.expanduser("~/.claude/utsutsu-code")
+    task_id = None
+
+    # Strategy 1: look up tracking file by tool_use_id
+    tool_use_id = data.get("tool_use_id", "")
+    if tool_use_id:
+        tracking_file = os.path.join(parent_dir, "_tracking", tool_use_id)
+        if os.path.isfile(tracking_file):
+            task_id = Path(tracking_file).read_text().strip()
+            os.remove(tracking_file)
+
+    # Strategy 2: fallback - extract from --signal-dir in prompt
+    if not task_id:
+        prompt = data.get("tool_input", {}).get("prompt", "")
+        match = re.search(r"--signal-dir\s+\S+/task-([a-f0-9]+)", prompt)
+        if match:
+            task_id = match.group(1)
+
+    if not task_id:
+        return
+
     signal_dir = os.path.join(parent_dir, f"task-{task_id}")
 
     # Direct dismiss — parent handles cleanup

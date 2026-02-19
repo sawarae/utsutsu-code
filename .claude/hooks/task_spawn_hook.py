@@ -22,12 +22,21 @@ def main():
     # Check if mascot app is running
     try:
         import subprocess
-        result = subprocess.run(
-            ["pgrep", "-f", "utsutsu_code"],
-            capture_output=True, timeout=2,
-        )
-        if result.returncode != 0:
-            return
+        import platform
+        if platform.system() == "Windows":
+            result = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq mascot.exe", "/NH"],
+                capture_output=True, text=True, timeout=2,
+            )
+            if "mascot.exe" not in result.stdout:
+                return
+        else:
+            result = subprocess.run(
+                ["pgrep", "-f", "utsutsu_code"],
+                capture_output=True, timeout=2,
+            )
+            if result.returncode != 0:
+                return
     except Exception:
         return
 
@@ -45,6 +54,15 @@ def main():
             "type": "mascot.spawn",
             "payload": {"task_id": task_id},
         }, f)
+
+    # Track task_id by tool_use_id for dismiss hook
+    tool_use_id = data.get("tool_use_id", "")
+    if tool_use_id:
+        tracking_dir = os.path.join(parent_dir, "_tracking")
+        os.makedirs(tracking_dir, exist_ok=True)
+        tracking_file = os.path.join(tracking_dir, tool_use_id)
+        with open(tracking_file, "w") as f:
+            f.write(task_id)
 
     # Inject --signal-dir into the prompt (compact to reduce token overhead)
     inject = (
