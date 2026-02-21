@@ -2,6 +2,13 @@ import Cocoa
 import FlutterMacOS
 
 class MainFlutterWindow: NSWindow {
+  // Close button region in Flutter logical coords (top-left origin).
+  // Must match _closeBtn* constants in mascot_widget.dart.
+  private static let closeBtnLeft: CGFloat = 228.0
+  private static let closeBtnTop: CGFloat = 0.0
+  private static let closeBtnRight: CGFloat = 264.0   // left + 36
+  private static let closeBtnBottom: CGFloat = 36.0    // top + 36
+
   private var clickThroughTimer: Timer?
   private var isDragging = false
   private var dragOrigin: NSPoint = .zero
@@ -189,6 +196,14 @@ class MainFlutterWindow: NSWindow {
   }
 
   private func isTransparentAt(_ windowPoint: NSPoint) -> Bool {
+    // Close button exclusion: always interactive regardless of pixel alpha.
+    // Convert NSWindow bottom-left coords to Flutter top-left coords.
+    let flutterY = self.frame.height - windowPoint.y
+    if windowPoint.x >= Self.closeBtnLeft && windowPoint.x < Self.closeBtnRight &&
+       flutterY >= Self.closeBtnTop && flutterY < Self.closeBtnBottom {
+      return false
+    }
+
     guard let cgImage = CGWindowListCreateImage(
       .null,
       .optionIncludingWindow,
