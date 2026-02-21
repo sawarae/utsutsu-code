@@ -67,6 +67,7 @@ class WanderController extends ChangeNotifier {
   // --- Collision ---
   int _tickCount = 0;
   DateTime? _lastCollisionTime;
+  DateTime? _lastDisplacementTime;
   bool _writingPosition = false;
   double _lastBroadcastX = double.nan;
   double _lastBroadcastY = double.nan;
@@ -277,6 +278,11 @@ class WanderController extends ChangeNotifier {
     _decelerationTimer?.cancel();
     _pauseTimer?.cancel();
 
+    // Immediately reverse facing so deceleration moves AWAY from the edge.
+    // Without this, _tick() keeps pushing the mascot into the edge boundary
+    // during deceleration, re-triggering _startPause in an infinite loop.
+    _facingLeft = goLeft;
+
     // Phase 1: Decelerate over ~200ms (6 steps × 33ms)
     const steps = 6;
     var step = 0;
@@ -293,12 +299,16 @@ class WanderController extends ChangeNotifier {
         // Phase 2: Brief pause (200-500ms)
         final pauseMs = 200 + _rng.nextInt(301);
         _pauseTimer = Timer(Duration(milliseconds: pauseMs), () {
-          _facingLeft = goLeft;
           _speed = _randomSpeed();
+          // Set initial non-zero speed so the first _tick() moves away from
+          // the screen edge.  Without this, _speedMultiplier stays at 0 from
+          // deceleration and _tick() re-triggers _startPause → infinite loop.
+          _speedMultiplier = 1.0 / steps;
           _isPaused = false;
 
-          // Phase 3: Accelerate over ~200ms
-          var accelStep = 0;
+          // Phase 3: Accelerate over ~200ms (starts from step 1 to match
+          // the initial _speedMultiplier set above)
+          var accelStep = 1;
           _decelerationTimer = Timer.periodic(
             const Duration(milliseconds: 33),
             (timer) {
@@ -370,8 +380,26 @@ class WanderController extends ChangeNotifier {
     _updateWindowPosition();
   }
 
-  /// Called when drag ends. Computes velocity from recent drag samples
-  /// and applies inertia physics.
+  /// Called when a native OS drag (HTCAPTION) ends on Windows.
+  /// The OS moved the window, so we sync our position and apply inertia.
+  void endNativeDrag(double screenX, double screenY,
+      double velXPxPerSec, double velYPxPerSec) {
+    _x = screenX;
+    _y = screenY;
+    _isDragging = false;
+    _inertiaTimer?.cancel();
+    _velocityX = velXPxPerSec / 30; // px/sec to px/tick (33ms)
+    _velocityY = velYPxPerSec / 30;
+
+    if (_velocityX.abs() > 0.5) {
+      _facingLeft = _velocityX < 0;
+    }
+
+    _applyInertia();
+  }
+
+  /// Called when drag ends (macOS Flutter GestureDetector path).
+  /// Computes velocity from recent drag samples and applies inertia.
   void endDrag() {
     _isDragging = false;
     _inertiaTimer?.cancel();
@@ -384,23 +412,33 @@ class WanderController extends ChangeNotifier {
       final last = _dragSamples.last;
       final dtMs = last.$1 - first.$1;
       if (dtMs > 0) {
-        // px/sec
         computedVelX = (last.$2 - first.$2) / dtMs * 1000;
         computedVelY = (last.$3 - first.$3) / dtMs * 1000;
       }
     }
     _dragSamples.clear();
 
-    _velocityX = computedVelX / 30; // Convert px/sec to px/tick (33ms)
+    _velocityX = computedVelX / 30;
     _velocityY = computedVelY / 30;
 
     if (_velocityX.abs() > 0.5) {
       _facingLeft = _velocityX < 0;
     }
 
+    _applyInertia();
+  }
+
+  /// Shared inertia physics: gravity + friction + bounce off edges.
+  void _applyInertia() {
     final friction = config.inertiaFriction;
     final gravity = config.inertiaGravity;
     final bottomY = _screenHeight - windowHeight + config.bottomMargin;
+
+    // On Windows, the OS prevents the window from moving below the screen
+    // edge. Use a clamped bottomY so the stop condition can be satisfied.
+    final effectiveBottomY = Platform.isWindows
+        ? (_screenHeight - windowHeight).clamp(0.0, bottomY)
+        : bottomY;
 
     _inertiaTimer = Timer.periodic(const Duration(milliseconds: 33), (timer) {
       _velocityX *= friction;
@@ -425,8 +463,8 @@ class WanderController extends ChangeNotifier {
       }
 
       // Settle at bottom
-      if (_y >= bottomY) {
-        _y = bottomY;
+      if (_y >= effectiveBottomY) {
+        _y = effectiveBottomY;
         _velocityY = 0;
       }
 
@@ -436,11 +474,11 @@ class WanderController extends ChangeNotifier {
       // Stop when velocity is negligible and at bottom
       if (_velocityX.abs() < 0.1 &&
           _velocityY.abs() < 0.1 &&
-          (_y - bottomY).abs() < 1) {
+          (_y - effectiveBottomY).abs() < 1) {
         timer.cancel();
         _y = bottomY;
+        _speedMultiplier = 1.0;
         _isPaused = false;
-        // Resume bounce animation and autonomous wandering
         if (!_bounceTicker.isActive) _bounceTicker.start();
         _moveTimer = Timer.periodic(
           const Duration(milliseconds: 33),
@@ -482,7 +520,9 @@ class WanderController extends ChangeNotifier {
     try {
       for (final entity in parentDir.listSync()) {
         if (entity is! Directory) continue;
-        if (entity.path == dir) continue;
+        // Normalize path separators for comparison (Windows listSync uses
+        // backslashes but signalDir may contain forward slashes).
+        if (entity.path.replaceAll(r'\', '/') == dir.replaceAll(r'\', '/')) continue;
         final posFile = File('${entity.path}/mascot_position');
         if (!posFile.existsSync()) continue;
         posFile.readAsString().then((content) {
@@ -511,6 +551,14 @@ class WanderController extends ChangeNotifier {
     double otherW,
     double otherH,
   ) {
+    // Displacement cooldown: avoid rapid ping-pong between wall and sibling.
+    // Only displace once per collision cooldown period.
+    final now = DateTime.now();
+    if (_lastDisplacementTime != null &&
+        now.difference(_lastDisplacementTime!) < Duration(seconds: config.collisionCooldownSeconds)) {
+      return false;
+    }
+
     final myRight = _x + windowWidth;
     final myBottom = _y + windowHeight;
     final otherRight = otherX + otherW;
@@ -532,11 +580,11 @@ class WanderController extends ChangeNotifier {
       }
 
       _x = _x.clamp(0.0, _screenWidth - windowWidth);
+      _lastDisplacementTime = now;
       _updateWindowPosition();
       notifyListeners();
 
       // Fire collision callback with cooldown
-      final now = DateTime.now();
       if (_lastCollisionTime == null ||
           now.difference(_lastCollisionTime!) > Duration(seconds: config.collisionCooldownSeconds)) {
         _lastCollisionTime = now;

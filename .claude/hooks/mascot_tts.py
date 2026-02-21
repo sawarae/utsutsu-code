@@ -27,13 +27,14 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-HOOK_TIMEOUT = 1  # seconds for availability check
+HOOK_TIMEOUT = 0.5  # seconds for availability check
 SYNTHESIS_TIMEOUT = 4  # seconds for synthesis
 LOG_DIR = os.path.expanduser("~/.claude/logs")
 LOG_FILE = os.path.join(LOG_DIR, "mascot_tts.log")
 
 DEFAULT_MESSAGE = "Task completed"
-MAX_MESSAGE_LENGTH = 30
+MAX_MESSAGE_LENGTH_JA = 30
+MAX_MESSAGE_LENGTH_EN = 200
 SIGNAL_DIR = os.path.expanduser("~/.claude/utsutsu-code")
 SIGNAL_FILE = os.path.join(SIGNAL_DIR, "mascot_speaking")
 MUTE_FILE = os.path.join(SIGNAL_DIR, "tts_muted")
@@ -52,6 +53,16 @@ def setup_logging():
         level=logging.DEBUG,
         format="%(asctime)s %(levelname)s %(message)s",
     )
+
+
+def _tcp_check(host, port, timeout=HOOK_TIMEOUT):
+    """Fast TCP connect check (avoids DNS overhead of urllib)."""
+    import socket
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except (OSError, socket.timeout):
+        return False
 
 
 def api_request(base_url, path, data=None, timeout=HOOK_TIMEOUT):
@@ -192,6 +203,7 @@ def notify_fallback(message):
         )
     elif sys.platform == "win32":
         # Use -EncodedCommand to avoid all quoting/escaping issues
+        # Run in background (Popen) to avoid blocking
         script = (
             "Add-Type -AssemblyName System.Windows.Forms; "
             "$n = New-Object System.Windows.Forms.NotifyIcon; "
@@ -206,11 +218,11 @@ def notify_fallback(message):
         import base64
         encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
         env = {**os.environ, "MASCOT_MSG": message}
-        subprocess.run(
+        subprocess.Popen(
             ["powershell", "-EncodedCommand", encoded],
-            check=False,
-            timeout=5,
             env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
     else:
         # Linux: notify-send
@@ -252,15 +264,12 @@ class CoeiroinkAdapter:
     """COEIROINK v2 API adapter."""
 
     def __init__(self, port=COEIROINK_PORT, speaker_name=None):
-        self.base_url = f"http://localhost:{port}"
+        self.port = port
+        self.base_url = f"http://127.0.0.1:{port}"
         self.speaker_name = speaker_name
 
     def is_available(self):
-        try:
-            api_request(self.base_url, "/v1/speakers")
-            return True
-        except Exception:
-            return False
+        return _tcp_check("127.0.0.1", self.port)
 
     def find_speaker(self):
         """Find speaker by name. Returns (speakerUuid, styleId)."""
@@ -332,15 +341,12 @@ class VoicevoxAdapter:
     }
 
     def __init__(self, port=VOICEVOX_PORT, speaker_name=None):
-        self.base_url = f"http://localhost:{port}"
+        self.port = port
+        self.base_url = f"http://127.0.0.1:{port}"
         self.speaker_name = speaker_name
 
     def is_available(self):
-        try:
-            api_request(self.base_url, "/speakers")
-            return True
-        except Exception:
-            return False
+        return _tcp_check("127.0.0.1", self.port)
 
     def find_speaker_id(self, emotion=None):
         """Find speaker ID, optionally matching emotion to style."""
@@ -403,6 +409,61 @@ class VoicevoxAdapter:
         return True
 
 
+class GenieTtsAdapter:
+    """Genie-TTS adapter for English Tsukuyomi voice (Rust binary)."""
+
+    def __init__(self, genie_root=None):
+        self.genie_root = Path(genie_root) if genie_root else None
+
+    def _binary(self):
+        return self.genie_root / "genie-tts-rs" / "target" / "release" / "genie-tts-en"
+
+    def _data_dir(self):
+        return self.genie_root / "genie-tts-rs" / "data"
+
+    def is_available(self):
+        if not self.genie_root:
+            return False
+        return self._binary().exists() and self._data_dir().exists()
+
+    def synthesize_and_play(self, text, emotion=None):
+        binary = self._binary()
+        data_dir = self._data_dir()
+
+        if not binary.exists():
+            logging.error("genie-tts-en binary not found at %s", binary)
+            return False
+
+        wav_path = None
+        try:
+            write_signal(text, emotion)
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                wav_path = tmp.name
+
+            result = subprocess.run(
+                [str(binary), "--text", text, "--output", wav_path, "--data-dir", str(data_dir)],
+                timeout=30,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                logging.error("Genie-TTS failed: %s", result.stderr)
+                return False
+
+            _play_wav(wav_path)
+            return True
+        except subprocess.TimeoutExpired:
+            logging.error("Genie-TTS timed out")
+            return False
+        finally:
+            clear_signal()
+            if wav_path:
+                try:
+                    os.unlink(wav_path)
+                except Exception:
+                    pass
+
+
 class NoneAdapter:
     """No-audio adapter. Only writes signal file for mascot animation."""
 
@@ -414,7 +475,7 @@ class NoneAdapter:
 
         write_signal(text, emotion)
         # Keep signal file for a brief moment so mascot can animate
-        time.sleep(1.0)
+        time.sleep(5.0)
         clear_signal()
         return True
 
@@ -422,17 +483,35 @@ class NoneAdapter:
 # ── Engine Resolution ─────────────────────────────────────────
 
 
-def resolve_adapter(config):
+def resolve_adapter(config, lang=None):
     """Resolve TTS adapter from env, config, or auto-detect."""
+    # English: use Genie-TTS if available
+    if lang == "en":
+        genie_root = config.get("genie_tts_root")
+        if genie_root:
+            adapter = GenieTtsAdapter(genie_root=genie_root)
+            if adapter.is_available():
+                logging.info("Using Genie-TTS for English")
+                return adapter
+            logging.warning("Genie-TTS not available, falling back")
+
     engine = os.environ.get("TTS_ENGINE") or config.get("engine")
     speaker_name = os.environ.get("TTS_SPEAKER") or config.get("speaker_name")
 
     if engine == "coeiroink":
         port = int(config.get("coeiroink_port", COEIROINK_PORT))
-        return CoeiroinkAdapter(port=port, speaker_name=speaker_name)
+        adapter = CoeiroinkAdapter(port=port, speaker_name=speaker_name)
+        if adapter.is_available():
+            return adapter
+        logging.warning("COEIROINK not available, falling back to signal-only")
+        return NoneAdapter()
     elif engine == "voicevox":
         port = int(config.get("voicevox_port", VOICEVOX_PORT))
-        return VoicevoxAdapter(port=port, speaker_name=speaker_name)
+        adapter = VoicevoxAdapter(port=port, speaker_name=speaker_name)
+        if adapter.is_available():
+            return adapter
+        logging.warning("VOICEVOX not available, falling back to signal-only")
+        return NoneAdapter()
     elif engine == "none":
         return NoneAdapter()
 
@@ -469,6 +548,7 @@ def main():
     spawn = False
     spawn_model = None
     quiet = False
+    lang = None
     argv = sys.argv[1:]
     filtered = []
     i = 0
@@ -487,6 +567,9 @@ def main():
             i += 1
         elif argv[i] == "--spawn-model" and i + 1 < len(argv):
             spawn_model = argv[i + 1]
+            i += 2
+        elif argv[i] == "--lang" and i + 1 < len(argv):
+            lang = argv[i + 1]
             i += 2
         elif argv[i] == "--quiet":
             quiet = True
@@ -523,7 +606,10 @@ def main():
         parent_dir = os.path.expanduser("~/.claude/utsutsu-code")
         spawn_signal = os.path.join(parent_dir, "spawn_child")
         os.makedirs(parent_dir, exist_ok=True)
-        payload = {"signal_dir": signal_dir}
+        # Dart expects {"task_id": "xxx"} and constructs signal dir as task-{id}
+        basename = os.path.basename(signal_dir)
+        task_id = basename[5:] if basename.startswith("task-") else basename
+        payload = {"task_id": task_id}
         if spawn_model:
             payload["model"] = spawn_model
         Path(spawn_signal).write_text(json.dumps(payload), encoding="utf-8")
@@ -537,7 +623,8 @@ def main():
         message = " ".join(argv)
     else:
         message = hook_input.get("message", DEFAULT_MESSAGE)
-    message = message[:MAX_MESSAGE_LENGTH]
+    max_len = MAX_MESSAGE_LENGTH_EN if lang == "en" else MAX_MESSAGE_LENGTH_JA
+    message = message[:max_len]
     logging.info("TTS fired: message=%s emotion=%s", message, emotion)
 
     config = load_config()
@@ -553,7 +640,7 @@ def main():
                 logging.info("TTS muted, signal-only")
                 adapter = NoneAdapter()
             else:
-                adapter = resolve_adapter(config)
+                adapter = resolve_adapter(config, lang=lang)
             engine_name = type(adapter).__name__.replace("Adapter", "").lower()
 
             if isinstance(adapter, NoneAdapter):
@@ -587,6 +674,12 @@ def main():
                     logging.warning("Speaker not found in %s", engine_name)
         except Exception as e:
             logging.error("TTS failed: %s", e)
+            # Write signal so mascot still shows bubble + lip-sync
+            try:
+                write_signal(message, emotion)
+                time.sleep(1.0)
+            finally:
+                clear_signal()
             if not muted:
                 try:
                     notify_fallback(message)

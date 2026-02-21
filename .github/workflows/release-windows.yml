@@ -1,5 +1,9 @@
 name: Release Windows Build
 
+# NOTE: リリースは feature/win ブランチから行う（mainではない）。
+# タグは feature/win の HEAD に付けて push する。
+# 例: git tag v0.04 feature/win && git push origin v0.04
+
 on:
   push:
     tags:
@@ -29,16 +33,7 @@ jobs:
         run: flutter pub get
 
       - name: Download model files
-        working-directory: mascot
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          mkdir -p assets/models/blend_shape
-          gh release download v0.01 \
-            --repo sawarae/utsutsu2d \
-            --dir assets/models/blend_shape \
-            --pattern '*.inp' \
-            --clobber
+        run: python3 .claude/skills/tsukuyomi-setup/setup_helper.py download-models
 
       - name: Build Windows release
         working-directory: mascot
@@ -47,14 +42,15 @@ jobs:
       - name: Copy model and config files to build output
         working-directory: mascot
         run: |
-          mkdir -p build/windows/x64/runner/Release/data/models/blend_shape
-          mkdir -p build/windows/x64/runner/Release/data/config
-          cp assets/models/blend_shape/emotions.toml \
-             build/windows/x64/runner/Release/data/models/blend_shape/
-          cp assets/models/blend_shape/*.inp \
-             build/windows/x64/runner/Release/data/models/blend_shape/
-          cp config/emotions.toml \
-             build/windows/x64/runner/Release/data/config/
+          RELEASE=build/windows/x64/runner/Release/data
+          mkdir -p "$RELEASE/models/blend_shape"
+          mkdir -p "$RELEASE/models/blend_shape_mini"
+          mkdir -p "$RELEASE/config"
+          cp assets/models/blend_shape/emotions.toml "$RELEASE/models/blend_shape/"
+          cp assets/models/blend_shape/*.inp "$RELEASE/models/blend_shape/"
+          cp assets/models/blend_shape_mini/emotions.toml "$RELEASE/models/blend_shape_mini/"
+          cp assets/models/blend_shape_mini/*.inp "$RELEASE/models/blend_shape_mini/"
+          cp config/emotions.toml "$RELEASE/config/"
           rm -f build/windows/x64/runner/Release/native_assets.json
 
       - name: Create zip archive

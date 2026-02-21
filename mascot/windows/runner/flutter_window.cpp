@@ -104,6 +104,35 @@ bool FlutterWindow::OnCreate() {
         }
       });
 
+  // Set up MethodChannel for Dart to enable/disable native drag.
+  // In wander mode, drag is handled by Flutter GestureDetector instead.
+  drag_channel_ = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+      flutter_controller_->engine()->messenger(),
+      "mascot/native_drag",
+      &flutter::StandardMethodCodec::GetInstance());
+
+  drag_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                 result) {
+        if (call.method_name() == "setEnabled") {
+          const auto* enabled = std::get_if<bool>(call.arguments());
+          if (enabled) {
+            drag_enabled_ = *enabled;
+          }
+          result->Success();
+        } else {
+          result->NotImplemented();
+        }
+      });
+
+  // Set up MethodChannel to notify Dart about native window drag events.
+  // Sends "dragStart", "dragEnd" with position and velocity.
+  window_drag_channel_ = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+      flutter_controller_->engine()->messenger(),
+      "mascot/window_drag",
+      &flutter::StandardMethodCodec::GetInstance());
+
   // Timer to toggle WS_EX_TRANSPARENT on the parent window.
   // When transparent, clicks pass through to other applications.
   // When opaque, WM_NCHITTEST returns HTCAPTION for drag support.
@@ -177,13 +206,69 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     double logical_y = local_y / scale;
 
     if (IsPointInOpaqueRegion(logical_x, logical_y)) {
-      return HTCAPTION;
+      // Close button area: return HTCLIENT so WM_LBUTTONUP fires
+      // (HTCAPTION would start a drag instead of dispatching the click).
+      if (logical_x >= kCloseBtnLeft && logical_x < kCloseBtnRight &&
+          logical_y >= kCloseBtnTop && logical_y < kCloseBtnBottom) {
+        return HTCLIENT;
+      }
+      // When native drag is disabled (wander mode), return HTCLIENT so
+      // Flutter GestureDetector receives the mouse events for drag/throw.
+      return drag_enabled_ ? HTCAPTION : HTCLIENT;
     }
     return HTTRANSPARENT;
   }
 
   if (message == WM_ERASEBKGND) {
     return 1;
+  }
+
+  // Handle native window drag events BEFORE Flutter's handler, which may
+  // consume WM_ENTERSIZEMOVE/WM_EXITSIZEMOVE and prevent our switch from
+  // running.
+  if (message == WM_ENTERSIZEMOVE) {
+    in_native_drag_ = true;
+    drag_samples_.clear();
+    if (window_drag_channel_) {
+      window_drag_channel_->InvokeMethod(
+          "dragStart", std::make_unique<flutter::EncodableValue>(true));
+    }
+  } else if (message == WM_MOVE && in_native_drag_) {
+    RECT wr;
+    GetWindowRect(hwnd, &wr);
+    DragSample s;
+    s.time_ms = GetTickCount();
+    s.x = wr.left;
+    s.y = wr.top;
+    drag_samples_.push_back(s);
+    if (drag_samples_.size() > 5) {
+      drag_samples_.erase(drag_samples_.begin());
+    }
+  } else if (message == WM_EXITSIZEMOVE) {
+    in_native_drag_ = false;
+    RECT wr;
+    GetWindowRect(hwnd, &wr);
+    double vel_x = 0, vel_y = 0;
+    if (drag_samples_.size() >= 2) {
+      auto& first = drag_samples_.front();
+      auto& last = drag_samples_.back();
+      DWORD dt = last.time_ms - first.time_ms;
+      if (dt > 0) {
+        vel_x = static_cast<double>(last.x - first.x) / dt * 1000.0;
+        vel_y = static_cast<double>(last.y - first.y) / dt * 1000.0;
+      }
+    }
+    drag_samples_.clear();
+    if (window_drag_channel_) {
+      flutter::EncodableMap map;
+      map[flutter::EncodableValue("x")] = flutter::EncodableValue(static_cast<double>(wr.left));
+      map[flutter::EncodableValue("y")] = flutter::EncodableValue(static_cast<double>(wr.top));
+      map[flutter::EncodableValue("velocityX")] = flutter::EncodableValue(vel_x);
+      map[flutter::EncodableValue("velocityY")] = flutter::EncodableValue(vel_y);
+      window_drag_channel_->InvokeMethod(
+          "dragEnd",
+          std::make_unique<flutter::EncodableValue>(flutter::EncodableValue(map)));
+    }
   }
 
   // Give Flutter, including plugins, an opportunity to handle window messages.

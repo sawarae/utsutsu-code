@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Directory, File, FileSystemEvent, Platform, Process, ProcessStartMode;
+import 'dart:io' show Directory, File, FileMode, FileSystemEvent, IOSink, Platform, Process, ProcessSignal, ProcessStartMode, exit;
 
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'cut_in_overlay.dart';
 import 'mascot_controller.dart';
 import 'mascot_widget.dart';
 import 'swarm/swarm_app.dart';
@@ -64,6 +66,90 @@ void main(List<String> args) async {
     return;
   }
 
+  // Cut-in mode: fullscreen dramatic overlay
+  if (config.cutIn) {
+    // Redirect debugPrint to a log file since detached process stdout is lost
+    IOSink? cutInLogSink;
+    if (config.signalDir != null) {
+      final logFile = File('${config.signalDir}/cutin_debug.log');
+      cutInLogSink = logFile.openWrite(mode: FileMode.append);
+      debugPrint = (String? message, {int? wrapWidth}) {
+        final ts = DateTime.now().toIso8601String();
+        cutInLogSink!.writeln('[$ts] $message');
+      };
+      debugPrint('CutIn subprocess started');
+    }
+    final primaryDisplay = await screenRetriever.getPrimaryDisplay();
+    final screenSize = primaryDisplay.size;
+
+    final windowOptions = WindowOptions(
+      size: screenSize,
+      backgroundColor: Colors.transparent,
+      titleBarStyle: TitleBarStyle.hidden,
+      windowButtonVisibility: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+    );
+
+    debugPrint('[CutIn] Screen size: $screenSize');
+
+    windowManager.waitUntilReadyToShow(windowOptions, () async {
+      debugPrint('[CutIn] Window ready to show, configuring...');
+      await windowManager.setBackgroundColor(Colors.transparent);
+      if (Platform.isMacOS) {
+        await windowManager.setClosable(false);
+        await windowManager.setMinimizable(false);
+        await windowManager.setMovable(false);
+      }
+      await windowManager.setIgnoreMouseEvents(true);
+      await windowManager.setVisibleOnAllWorkspaces(true);
+      await windowManager.show();
+      // Set size/position AFTER show() to override macOS window state restoration
+      await windowManager.setSize(screenSize);
+      await windowManager.setPosition(Offset.zero);
+      // Re-apply after a brief delay to defeat macOS frame restoration
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await windowManager.setSize(screenSize);
+      await windowManager.setPosition(Offset.zero);
+      // Ensure cut-in is above all other windows (including parent mascot)
+      await windowManager.setAlwaysOnTop(true);
+      await windowManager.focus();
+      debugPrint('[CutIn] Window shown: size=$screenSize, pos=0,0');
+    });
+
+    final controller = MascotController(
+      signalDir: config.signalDir,
+      modelsDir: config.modelsDir,
+      model: config.model,
+    );
+
+    final background = CutInBackground.fromName(config.cutInBackground)
+        ?? CutInBackground.forEmotion(config.cutInEmotion);
+
+    debugPrint('[CutIn] Starting app: message="${config.cutInMessage}", emotion=${config.cutInEmotion}, bg=$background');
+
+    runApp(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        scaffoldBackgroundColor: Colors.transparent,
+        canvasColor: Colors.transparent,
+      ),
+      home: CutInOverlay(
+        message: config.cutInMessage ?? '',
+        emotion: config.cutInEmotion ?? 'Joy',
+        background: background,
+        controller: controller,
+        onComplete: () async {
+          debugPrint('[CutIn] onComplete: closing window');
+          await cutInLogSink?.flush();
+          windowManager.close();
+          Future.delayed(const Duration(seconds: 1), () => exit(0));
+        },
+      ),
+    ));
+    return;
+  }
+
   // Wander mode uses a smaller window; extra width for outline dilation padding
   final defaultWidth = config.wander ? winConfig.wanderWidth : winConfig.mainWidth;
   final defaultHeight = config.wander ? winConfig.wanderHeight : winConfig.mainHeight;
@@ -76,12 +162,12 @@ void main(List<String> args) async {
     // creates the glass region; Flutter must also set transparent background
     // so that alpha=0 pixels pass through to the DWM compositor.
     backgroundColor: Colors.transparent,
-    titleBarStyle:
-        Platform.isWindows ? TitleBarStyle.normal : TitleBarStyle.hidden,
-    // Hide traffic light buttons in wander mode. Must be set here (not in
-    // Swift awakeFromNib) because window_manager's setTitleBarStyle
-    // force-unwraps standardWindowButton(.closeButton) superview.
-    windowButtonVisibility: !config.wander,
+    // On Windows, skip setTitleBarStyle entirely to avoid DWM margin reset
+    // that breaks DwmExtendFrameIntoClientArea transparency.
+    titleBarStyle: Platform.isWindows ? null : TitleBarStyle.hidden,
+    // Hide native traffic light buttons — use custom close button instead.
+    // Wander mode also hides them (child mascots are closed by parent).
+    windowButtonVisibility: false,
     skipTaskbar: false,
     alwaysOnTop: true,
   );
@@ -89,12 +175,16 @@ void main(List<String> args) async {
   windowManager.waitUntilReadyToShow(windowOptions, () async {
     await windowManager.setBackgroundColor(Colors.transparent);
 
-    // Hide traffic light buttons in wander mode (macOS)
+    // Hide traffic light buttons / system buttons in wander mode
     // Disable window-level dragging so Flutter GestureDetector handles it
-    if (config.wander && Platform.isMacOS) {
+    if (config.wander) {
       await windowManager.setClosable(false);
       await windowManager.setMinimizable(false);
-      await windowManager.setMovable(false);
+      if (Platform.isMacOS) {
+        await windowManager.setMovable(false);
+      }
+      // On Windows, native drag is disabled via mascot/native_drag channel
+      // in MascotWidget.initState
     }
 
     if (config.wander) {
@@ -134,6 +224,10 @@ class _AppConfig {
   final bool outline;
   final bool swarm;
   final bool collision;
+  final bool cutIn;
+  final String? cutInMessage;
+  final String? cutInEmotion;
+  final String? cutInBackground;
 
   const _AppConfig({
     this.modelsDir,
@@ -146,6 +240,10 @@ class _AppConfig {
     this.outline = true,
     this.swarm = false,
     this.collision = true,
+    this.cutIn = false,
+    this.cutInMessage,
+    this.cutInEmotion,
+    this.cutInBackground,
   });
 }
 
@@ -161,6 +259,10 @@ _AppConfig _parseArgs(List<String> args) {
   bool outline = true;
   bool swarm = false;
   bool collision = true;
+  bool cutIn = false;
+  String? cutInMessage;
+  String? cutInEmotion;
+  String? cutInBackground;
 
   for (var i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -188,6 +290,14 @@ _AppConfig _parseArgs(List<String> args) {
         swarm = true;
       case '--no-collision':
         collision = false;
+      case '--cutin':
+        cutIn = true;
+      case '--cutin-message':
+        if (i + 1 < args.length) cutInMessage = args[++i];
+      case '--cutin-emotion':
+        if (i + 1 < args.length) cutInEmotion = args[++i];
+      case '--cutin-background':
+        if (i + 1 < args.length) cutInBackground = args[++i];
     }
   }
 
@@ -202,6 +312,10 @@ _AppConfig _parseArgs(List<String> args) {
     outline: outline,
     swarm: swarm,
     collision: collision,
+    cutIn: cutIn,
+    cutInMessage: cutInMessage,
+    cutInEmotion: cutInEmotion,
+    cutInBackground: cutInBackground,
   );
 }
 
@@ -230,7 +344,7 @@ class MascotApp extends StatefulWidget {
   State<MascotApp> createState() => _MascotAppState();
 }
 
-class _MascotAppState extends State<MascotApp> {
+class _MascotAppState extends State<MascotApp> with WindowListener {
   WindowConfig get _wc => widget.windowConfig;
 
   late final MascotController _controller;
@@ -238,10 +352,14 @@ class _MascotAppState extends State<MascotApp> {
   final List<_ChildMascot> _children = [];
   final List<_WanderChild> _wanderChildren = [];
   Timer? _spawnTimer;
+  Timer? _childReaper;
   StreamSubscription<FileSystemEvent>? _spawnWatcher;
   late final String _spawnSignalPath;
+  late final String _cutInSignalPath;
   final List<Timer> _ttsTimers = [];
   _WanderChild? _swarmOverlay; // Single swarm overlay process
+  _WanderChild? _cutInProcess; // Active cut-in overlay process
+  bool _cleanedUp = false;
 
   @override
   void initState() {
@@ -254,8 +372,9 @@ class _MascotAppState extends State<MascotApp> {
     );
 
     if (widget.config.wander) {
-      final windowW = widget.config.width ?? 150.0;
-      final windowH = widget.config.height ?? 350.0;
+      final wc = widget.windowConfig;
+      final windowW = widget.config.width ?? wc.wanderWidth;
+      final windowH = widget.config.height ?? wc.wanderHeight;
       _wanderController = WanderController(
         windowWidth: windowW,
         windowHeight: windowH,
@@ -265,19 +384,72 @@ class _MascotAppState extends State<MascotApp> {
       _wanderController!.start();
     }
 
-    // Resolve spawn signal path from the main signal directory
+    // Resolve signal paths from the main signal directory
     final signalDir = widget.config.signalDir ?? _defaultSignalDir();
     _spawnSignalPath = '$signalDir/spawn_child';
+    _cutInSignalPath = '$signalDir/cutin';
 
     // Clean up zombie wander children from a previous (crashed) parent
     if (!widget.config.wander) {
       _cleanStaleChildren();
     }
 
+    // Intercept macOS close button (traffic light red ×) so that dispose()
+    // cleanup actually runs before the process exits.  Without this, the OS
+    // terminates the process immediately and child wander mascots become
+    // zombies.  Only needed for the parent mascot (non-wander).
+    if (!widget.config.wander) {
+      windowManager.addListener(this);
+      windowManager.setPreventClose(true);
+    }
+
     // Watch for child spawn signals (only in non-wander mode)
     if (!widget.config.wander) {
       _startSpawnWatcher();
+      _startChildReaper();
     }
+  }
+
+  /// Periodically check if wander child processes are still alive.
+  /// Removes dead entries from [_wanderChildren] so new spawns are allowed.
+  void _startChildReaper() {
+    _childReaper = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (_wanderChildren.isEmpty) return;
+      final before = _wanderChildren.length;
+      _wanderChildren.removeWhere((child) {
+        return !_isProcessAlive(child.pid);
+      });
+      if (_wanderChildren.length < before) {
+        _persistChildPids();
+        debugPrint('Reaped dead wander children: ${before - _wanderChildren.length} removed, ${_wanderChildren.length} remaining');
+      }
+    });
+  }
+
+  /// Check if a process is still alive, cross-platform.
+  /// On macOS/Linux, sends SIGCONT (harmless no-op signal).
+  /// On Windows, SIGCONT is not supported, so use SIGTERM with signal 0
+  /// semantics: killPid returns false if the process doesn't exist.
+  static bool _isProcessAlive(int pid) {
+    if (Platform.isWindows) {
+      // On Windows, Process.killPid only supports sigterm/sigkill.
+      // Instead, try to open the process handle via a harmless kill(0)-like
+      // check. killPid(pid, sigterm) would actually terminate it, so we
+      // use a different approach: check if the dismiss signal was written.
+      // Fallback: use Process.run to query tasklist.
+      try {
+        final result = Process.runSync(
+          'tasklist',
+          ['/FI', 'PID eq $pid', '/NH'],
+        );
+        return RegExp(r'\b' + pid.toString() + r'\b')
+            .hasMatch(result.stdout.toString());
+      } catch (_) {
+        return true; // Assume alive on error to avoid premature reaping
+      }
+    }
+    // macOS/Linux: SIGCONT is harmless and returns false if process is gone
+    return Process.killPid(pid, ProcessSignal.sigcont);
   }
 
   /// Use FSEvents (macOS) / inotify (Linux) to watch for spawn_child file
@@ -286,10 +458,23 @@ class _MascotAppState extends State<MascotApp> {
     final signalDir = widget.config.signalDir ?? _defaultSignalDir();
     final dir = Directory(signalDir);
     if (!dir.existsSync()) dir.createSync(recursive: true);
+
+    // On Windows, Directory.watch() starts successfully but may not deliver
+    // FileSystemEvent.create events reliably. Always use polling there.
+    if (Platform.isWindows) {
+      _startSpawnPolling();
+      return;
+    }
+
     try {
-      _spawnWatcher = dir.watch(events: FileSystemEvent.create).listen((event) {
-        if (event.path.endsWith('/spawn_child')) {
-          _checkSpawnSignal();
+      _spawnWatcher = dir
+          .watch(events: FileSystemEvent.create | FileSystemEvent.modify)
+          .listen((event) {
+        if (event.path.contains('spawn_child')) {
+          _checkSpawnSignals();
+        }
+        if (event.path.endsWith('/cutin') || event.path.endsWith(r'\cutin')) {
+          _checkCutInSignal();
         }
       }, onError: (_) {
         // Fallback to polling on watch error
@@ -300,13 +485,21 @@ class _MascotAppState extends State<MascotApp> {
     } catch (_) {
       _startSpawnPolling();
     }
+
+    // Check for signals that were written before the watcher was ready
+    // (e.g. left over from a crash, or written during startup)
+    _checkSpawnSignals();
+    _checkCutInSignal();
   }
 
   void _startSpawnPolling() {
     _spawnTimer?.cancel();
     _spawnTimer = Timer.periodic(
       const Duration(milliseconds: 200),
-      (_) => _checkSpawnSignal(),
+      (_) {
+        _checkSpawnSignals();
+        _checkCutInSignal();
+      },
     );
   }
 
@@ -358,7 +551,7 @@ class _MascotAppState extends State<MascotApp> {
       if (parentDir.existsSync()) {
         for (final entity in parentDir.listSync()) {
           if (entity is Directory) {
-            final name = entity.path.split('/').last;
+            final name = p.basename(entity.path);
             if (!name.startsWith('task-')) continue;
 
             final hasDismiss =
@@ -379,7 +572,26 @@ class _MascotAppState extends State<MascotApp> {
       debugPrint('Failed to clean orphaned task dirs: $e');
     }
 
-    // 3. Remove legacy _active_task_mascots tracking file
+    // 3. Clean stale cutin_* directories from previous cut-in processes
+    try {
+      final parentDir = Directory(signalDir);
+      if (parentDir.existsSync()) {
+        for (final entity in parentDir.listSync()) {
+          if (entity is Directory) {
+            final name = p.basename(entity.path);
+            if (!name.startsWith('cutin_')) continue;
+            try {
+              entity.deleteSync(recursive: true);
+              debugPrint('Cleaned stale cutin dir: ${entity.path}');
+            } catch (_) {}
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to clean stale cutin dirs: $e');
+    }
+
+    // 4. Remove legacy _active_task_mascots tracking file
     try {
       final legacyFile = File('$signalDir/_active_task_mascots');
       if (legacyFile.existsSync()) {
@@ -402,13 +614,27 @@ class _MascotAppState extends State<MascotApp> {
     } catch (_) {}
   }
 
-  void _checkSpawnSignal() {
-    final file = File(_spawnSignalPath);
-    if (!file.existsSync()) return;
+  /// Scan for all spawn_child_* signal files and process each one.
+  /// Each file is named spawn_child_{task_id} to avoid overwrites on
+  /// parallel subagent launches.
+  void _checkSpawnSignals() {
+    final signalDir = widget.config.signalDir ?? _defaultSignalDir();
+    final dir = Directory(signalDir);
+    if (!dir.existsSync()) return;
 
+    final spawnFiles = dir.listSync().whereType<File>().where(
+          (f) => f.uri.pathSegments.last.startsWith('spawn_child_'),
+        );
+
+    for (final file in spawnFiles) {
+      _processSpawnFile(file);
+    }
+  }
+
+  void _processSpawnFile(File file) {
     // In swarm mode, don't consume the signal — just ensure the overlay
     // is running and let it handle all spawn signals directly.
-    if (_wc.maxChildren > _wc.swarmThreshold) {
+    if (!Platform.isWindows && _wc.maxChildren > _wc.swarmThreshold) {
       if (_swarmOverlay == null) {
         _launchSwarmOverlay('blend_shape_mini');
       }
@@ -416,7 +642,7 @@ class _MascotAppState extends State<MascotApp> {
     }
 
     // Non-swarm mode: atomically claim the signal file
-    final claimedPath = '${_spawnSignalPath}_processing';
+    final claimedPath = '${file.path}_processing';
     try {
       file.renameSync(claimedPath);
     } catch (_) {
@@ -450,6 +676,97 @@ class _MascotAppState extends State<MascotApp> {
     } catch (e) {
       debugPrint('Failed to spawn child mascot: $e');
     }
+  }
+
+  /// Check for a cut-in signal file and launch the cut-in overlay process.
+  ///
+  /// Signal file format (JSON):
+  /// ```json
+  /// {"message": "デプロイ完了！", "emotion": "Joy", "background": "speed_lines"}
+  /// ```
+  void _checkCutInSignal() {
+    final file = File(_cutInSignalPath);
+    if (!file.existsSync()) {
+      return;
+    }
+    debugPrint('[CutIn] Signal file detected: ${file.path}');
+
+    // Don't launch another cut-in while one is active
+    if (_cutInProcess != null && _isProcessAlive(_cutInProcess!.pid)) {
+      debugPrint('[CutIn] Skipping: existing cut-in process still alive (pid=${_cutInProcess!.pid})');
+      return;
+    }
+
+    // Atomically claim the signal file
+    final claimedPath = '${_cutInSignalPath}_processing';
+    try {
+      file.renameSync(claimedPath);
+    } catch (e) {
+      debugPrint('[CutIn] Failed to claim signal file (already claimed?): $e');
+      return;
+    }
+
+    try {
+      final claimedFile = File(claimedPath);
+      final content = claimedFile.readAsStringSync().trim();
+      claimedFile.deleteSync();
+      debugPrint('[CutIn] Signal content: $content');
+
+      final json = jsonDecode(content) as Map<String, dynamic>;
+      final payload = json.containsKey('version')
+          ? (json['payload'] as Map<String, dynamic>? ?? {})
+          : json;
+
+      final message = (payload['message'] as String?) ?? '';
+      final emotion = (payload['emotion'] as String?) ?? 'Joy';
+      final background = payload['background'] as String?;
+
+      debugPrint('[CutIn] Launching: message="$message", emotion=$emotion, background=$background');
+      _launchCutIn(message: message, emotion: emotion, background: background);
+    } catch (e) {
+      debugPrint('[CutIn] Failed to process cut-in signal: $e');
+    }
+  }
+
+  void _launchCutIn({
+    required String message,
+    required String emotion,
+    String? background,
+  }) {
+    // Create an isolated signal directory for the cut-in subprocess
+    // so it doesn't consume the parent's mascot_speaking file.
+    final parentDir = widget.config.signalDir ?? _defaultSignalDir();
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final cutInSignalDir = '$parentDir/cutin_$timestamp';
+    Directory(cutInSignalDir).createSync(recursive: true);
+
+    final exe = Platform.resolvedExecutable;
+    final args = [
+      '--cutin',
+      '--cutin-message', message,
+      '--cutin-emotion', emotion,
+      '--signal-dir', cutInSignalDir,
+    ];
+    if (background != null) {
+      args.addAll(['--cutin-background', background]);
+    }
+    // Always pass resolved models dir so the subprocess can find the model
+    // even if _defaultModelsDir() resolution differs in the detached process.
+    final modelsDir = widget.config.modelsDir ?? _controller.modelConfig.modelDirPath;
+    final resolvedModelsDir = Directory(modelsDir).parent.path;
+    args.addAll(['--models-dir', resolvedModelsDir]);
+    if (widget.config.model != null) {
+      args.addAll(['--model', widget.config.model!]);
+    }
+    final exeDir = File(exe).parent.path;
+    Process.start(exe, args,
+        mode: ProcessStartMode.detached,
+        workingDirectory: exeDir).then((process) {
+      _cutInProcess = _WanderChild(pid: process.pid, signalDir: cutInSignalDir);
+      debugPrint('[CutIn] Launched cut-in overlay: pid=${process.pid}, signalDir=$cutInSignalDir');
+    }).catchError((e) {
+      debugPrint('[CutIn] Failed to launch cut-in overlay: $e');
+    });
   }
 
   /// Send initial TTS to a newly spawned child mascot after a short delay,
@@ -510,7 +827,12 @@ class _MascotAppState extends State<MascotApp> {
     if (widget.config.modelsDir != null) {
       args.addAll(['--models-dir', widget.config.modelsDir!]);
     }
-    Process.start(exe, args, mode: ProcessStartMode.detached).then((process) {
+    // Use the exe's directory as working directory so the child can find
+    // its data/ folder (Flutter assets, config files, etc.).
+    final exeDir = File(exe).parent.path;
+    Process.start(exe, args,
+        mode: ProcessStartMode.detached,
+        workingDirectory: exeDir).then((process) {
       _wanderChildren.add(_WanderChild(pid: process.pid, signalDir: signalDir));
       _persistChildPids();
       debugPrint('Spawned wander mascot: pid=${process.pid} (${_wanderChildren.length}/${_wc.maxChildren})');
@@ -535,9 +857,20 @@ class _MascotAppState extends State<MascotApp> {
   }
 
   @override
-  void dispose() {
+  void onWindowClose() async {
+    await _performCleanup();
+    await windowManager.destroy();
+  }
+
+  /// Cleanup child processes, timers, and controllers.  Guarded against
+  /// double invocation (onWindowClose runs first, then dispose may follow).
+  Future<void> _performCleanup() async {
+    if (_cleanedUp) return;
+    _cleanedUp = true;
+
     _spawnTimer?.cancel();
     _spawnWatcher?.cancel();
+    _childReaper?.cancel();
     for (final timer in _ttsTimers) {
       timer.cancel();
     }
@@ -548,6 +881,18 @@ class _MascotAppState extends State<MascotApp> {
         Process.killPid(_swarmOverlay!.pid);
       } catch (_) {}
       _swarmOverlay = null;
+    }
+    // Kill cut-in overlay process and clean up its signal directory
+    if (_cutInProcess != null) {
+      try {
+        Process.killPid(_cutInProcess!.pid);
+      } catch (_) {}
+      if (_cutInProcess!.signalDir.isNotEmpty) {
+        try {
+          Directory(_cutInProcess!.signalDir).deleteSync(recursive: true);
+        } catch (_) {}
+      }
+      _cutInProcess = null;
     }
     // Dismiss and kill all wander child processes
     for (final child in _wanderChildren) {
@@ -569,6 +914,12 @@ class _MascotAppState extends State<MascotApp> {
     }
     _wanderController?.dispose();
     _controller.dispose();
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    _performCleanup();
     super.dispose();
   }
 

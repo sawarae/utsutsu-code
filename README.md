@@ -28,7 +28,10 @@ Claude Codeで `/tsukuyomi-setup` を実行すると、前提条件チェック�
 2. [COEIROINKv2](https://coeiroink.com/download) をインストールして起動
 3. [Releases](https://github.com/sawarae/utsutsu-code/releases) から `utsutsu-code-windows.zip` をダウンロード
 4. 任意の場所に展開
-5. `mascot.exe` を起動
+5. `utsutsu_code.exe` を起動
+
+> **注意:** Windows の Smart App Control が有効な場合、未署名の exe がブロックされます。
+> 設定 → プライバシーとセキュリティ → Windows セキュリティ → アプリとブラウザーの制御 → Smart App Control をオフにしてください。
 
 その後、`.claude` ディレクトリの内容を開発用のプロジェクト内にコピーしてください。
 
@@ -46,7 +49,20 @@ flutter run -d macos
 
 このアプリでは、フリー素材キャラクター「[つくよみちゃん](https://tyc.rei-yumesaki.net/)」（© Rei Yumesaki）を使用しています。
 
-- **素材名:** つくよみちゃん万能立ち絵素材
+
+### （公式）つくよみちゃん万能立ち絵素材
+
 - **素材制作者:** 花兎\*
 - **素材配布URL:** <https://tyc.rei-yumesaki.net/material/illust/>
 - **利用規約:** <https://tyc.rei-yumesaki.net/about/terms/>
+
+### （公式）つくよみちゃん万能ミニキャラ素材
+
+- **素材制作者:** きばやし
+- **素材配布URL:** <https://tyc.rei-yumesaki.net/material/illust/>
+- **利用規約:** <https://tyc.rei-yumesaki.net/about/terms/>
+- **ニコニコ静画:** [im11318256](https://seiga.nicovideo.jp/seiga/im11318256)
+
+### 夢前月夜ちゃんが頑張る立ち絵
+- **素材制作者:** ぴぴ
+- **素材配布URL:** <https://seiga.nicovideo.jp/seiga/im11142602>

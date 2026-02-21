@@ -2,6 +2,15 @@
 
 Desktop mascot with lip-sync animation for AI coding assistants.
 
+## リリース
+
+Windows リリースは **`feature/win` ブランチ**から行う（mainではない）。
+タグを feature/win の HEAD に付けて push すると CI が自動でビルド・リリースする。
+
+```bash
+git tag v0.XX feature/win && git push origin v0.XX
+```
+
 ## つくよみちゃんTTS通知
 
 作業開始時と作業完了時に `python3 ~/.claude/hooks/mascot_tts.py --emotion KEY "要約(30文字以内)"` でつくよみちゃんに読み上げさせる。
@@ -31,6 +40,19 @@ Desktop mascot with lip-sync animation for AI coding assistants.
 | エラー発生 | Trouble | `"ビルドに失敗しました"` |
 | 褒められた | Blush | `"ありがとうございます"` |
 | お祝い | Singing | `"リリースおめでとう"` |
+
+### カットイン演出（/cutin）を発動するタイミング
+
+以下のイベント発生時に `/cutin` を実行する（macOS専用）。マスコット未起動時はスキップ。
+カットインもつくよみちゃんのですます調。
+
+| イベント | 感情 | メッセージ例 |
+|---------|------|-------------|
+| `git push` 成功 | Default | `"プッシュ完了しました！"` |
+| `git revert` 実行 | Trouble | `"リバートしました"` |
+| デプロイ成功 | Default | `"デプロイ成功しました！"` |
+| デプロイ失敗 | Trouble | `"デプロイ失敗です…"` |
+| PR作成 | Joy | `"プルリク作成しました！"` |
 
 ### 自動フック（Stop イベント）
 

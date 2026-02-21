@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">
+  <defs>
+    <radialGradient id="bg" cx="65%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#ff4466"/>
+      <stop offset="60%" stop-color="#cc1133"/>
+      <stop offset="100%" stop-color="#880022"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="65%" cy="50%" r="40%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <!-- Speed lines radiating from right-center (character focal point) -->
+  <g transform="translate(1250,540)" opacity="0.6">
+    <line x1="0" y1="0" x2="-1400" y2="-700" stroke="#fff" stroke-width="3"/>
+    <line x1="0" y1="0" x2="-1400" y2="-560" stroke="#ffccdd" stroke-width="2"/>
+    <line x1="0" y1="0" x2="-1400" y2="-420" stroke="#fff" stroke-width="4"/>
+    <line x1="0" y1="0" x2="-1400" y2="-280" stroke="#ffccdd" stroke-width="2"/>
+    <line x1="0" y1="0" x2="-1400" y2="-140" stroke="#fff" stroke-width="3"/>
+    <line x1="0" y1="0" x2="-1400" y2="0" stroke="#ffccdd" stroke-width="5"/>
+    <line x1="0" y1="0" x2="-1400" y2="140" stroke="#fff" stroke-width="3"/>
+    <line x1="0" y1="0" x2="-1400" y2="280" stroke="#ffccdd" stroke-width="2"/>
+    <line x1="0" y1="0" x2="-1400" y2="420" stroke="#fff" stroke-width="4"/>
+    <line x1="0" y1="0" x2="-1400" y2="560" stroke="#ffccdd" stroke-width="2"/>
+    <line x1="0" y1="0" x2="-1400" y2="700" stroke="#fff" stroke-width="3"/>
+    <line x1="0" y1="0" x2="-1300" y2="-650" stroke="#fff" stroke-width="1.5"/>
+    <line x1="0" y1="0" x2="-1300" y2="-490" stroke="#ffccdd" stroke-width="1.5"/>
+    <line x1="0" y1="0" x2="-1300" y2="-350" stroke="#fff" stroke-width="2"/>
+    <line x1="0" y1="0" x2="-1300" y2="-210" stroke="#ffccdd" stroke-width="1.5"/>
+    <line x1="0" y1="0" x2="-1300" y2="-70" stroke="#fff" stroke-width="2.5"/>
+    <line x1="0" y1="0" x2="-1300" y2="70" stroke="#ffccdd" stroke-width="2.5"/>
+    <line x1="0" y1="0" x2="-1300" y2="210" stroke="#fff" stroke-width="1.5"/>
+    <line x1="0" y1="0" x2="-1300" y2="350" stroke="#ffccdd" stroke-width="2"/>
+    <line x1="0" y1="0" x2="-1300" y2="490" stroke="#fff" stroke-width="1.5"/>
+    <line x1="0" y1="0" x2="-1300" y2="650" stroke="#ffccdd" stroke-width="1.5"/>
+  </g>
+  <!-- Central glow -->
+  <rect width="1920" height="1080" fill="url(#glow)"/>
+  <!-- Accent triangles -->
+  <polygon points="1920,0 1920,200 1720,0" fill="#ff6688" opacity="0.4"/>
+  <polygon points="1920,1080 1920,880 1720,1080" fill="#ff6688" opacity="0.4"/>
+</svg>

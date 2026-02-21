@@ -101,6 +101,26 @@ def download_models(dest="mascot/assets/models/blend_shape"):
         return 1
 
     print(f"Downloaded {downloaded} model(s)")
+
+    # Copy *_mini.inp files to blend_shape_mini/ for child mascots
+    import os
+    import shutil
+
+    mini_dest = os.path.join(os.path.dirname(dest), "blend_shape_mini")
+    os.makedirs(mini_dest, exist_ok=True)
+    for f in os.listdir(dest):
+        if f.endswith("_mini.inp"):
+            shutil.copy2(os.path.join(dest, f), os.path.join(mini_dest, f))
+            print(f"  Copied {f} -> {mini_dest}/")
+    # Copy emotions.toml for mini model if it exists
+    mini_toml = os.path.join(dest.replace("blend_shape", "blend_shape_mini"), "emotions.toml")
+    if not os.path.exists(os.path.join(mini_dest, "emotions.toml")):
+        src_toml = os.path.join(os.path.dirname(os.path.dirname(dest)),
+                                "assets", "models", "blend_shape_mini", "emotions.toml")
+        if os.path.exists(src_toml):
+            shutil.copy2(src_toml, os.path.join(mini_dest, "emotions.toml"))
+            print(f"  Copied emotions.toml -> {mini_dest}/")
+
     return 0
 
 
