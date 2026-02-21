@@ -14,7 +14,7 @@ dependencies:
   utsutsu2d:
     git:
       url: https://github.com/sawarae/utsutsu2d
-      ref: v0.03
+      ref: v0.04
   path: ^1.8.0
   screen_retriever: ^0.1.9
   window_manager: ^0.3.7

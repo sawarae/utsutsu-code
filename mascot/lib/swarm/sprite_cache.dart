@@ -78,6 +78,10 @@ class SpriteCache {
     // Create PuppetController and configure camera for 2x render size
     final pc = PuppetController();
     await pc.loadModel(model, textures);
+
+    // Set DPR for PSD compositor offscreen buffers (Retina 2x)
+    pc.renderer?.devicePixelRatio = scale;
+
     final camera = pc.camera;
     if (camera != null) {
       camera.zoom = config.cameraZoom * (width / 264.0);
