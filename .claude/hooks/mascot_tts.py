@@ -19,6 +19,7 @@ Usage:
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -29,13 +30,28 @@ from pathlib import Path
 
 HOOK_TIMEOUT = 1  # seconds for availability check
 SYNTHESIS_TIMEOUT = 4  # seconds for synthesis
-LOG_DIR = os.path.expanduser("~/.claude/logs")
+
+
+def _resolve_agent_home():
+    """Resolve agent home directory with .claude preferred over .codex."""
+    home = os.path.expanduser("~")
+    claude = os.path.join(home, ".claude")
+    codex = os.path.join(home, ".codex")
+    if os.path.isdir(claude):
+        return claude
+    if os.path.isdir(codex):
+        return codex
+    return claude
+
+
+AGENT_HOME = _resolve_agent_home()
+LOG_DIR = os.path.join(AGENT_HOME, "logs")
 LOG_FILE = os.path.join(LOG_DIR, "mascot_tts.log")
 
 DEFAULT_MESSAGE = "Task completed"
 MAX_MESSAGE_LENGTH_JA = 30
 MAX_MESSAGE_LENGTH_EN = 200
-SIGNAL_DIR = os.path.expanduser("~/.claude/utsutsu-code")
+SIGNAL_DIR = os.path.join(AGENT_HOME, "utsutsu-code")
 SIGNAL_FILE = os.path.join(SIGNAL_DIR, "mascot_speaking")
 MUTE_FILE = os.path.join(SIGNAL_DIR, "tts_muted")
 LOCK_FILE = os.path.join(SIGNAL_DIR, "tts.lock")
@@ -215,11 +231,14 @@ def notify_fallback(message):
         )
     else:
         # Linux: notify-send
-        subprocess.run(
-            ["notify-send", "Mascot TTS", message],
-            check=False,
-            timeout=3,
-        )
+        if shutil.which("notify-send"):
+            subprocess.run(
+                ["notify-send", "Mascot TTS", message],
+                check=False,
+                timeout=3,
+            )
+        else:
+            logging.info("notify-send not found; skip desktop notification")
 
 
 def _play_wav(wav_path):
@@ -242,8 +261,12 @@ def _play_wav(wav_path):
             env=env,
         )
     else:
-        # Linux
-        subprocess.run(["aplay", wav_path], timeout=5, check=False)
+        # Linux: try common players in order
+        for cmd in (["aplay", wav_path], ["paplay", wav_path], ["pw-play", wav_path]):
+            if shutil.which(cmd[0]):
+                subprocess.run(cmd, timeout=5, check=False)
+                return
+        logging.warning("No Linux audio player found (tried aplay/paplay/pw-play)")
 
 
 # ── Adapters ──────────────────────────────────────────────────
@@ -588,7 +611,7 @@ def main():
             print(json.dumps({"status": "error", "error": "--signal-dir required with --spawn"}))
             return
         # Always write to the default (parent) signal dir, not the overridden one
-        parent_dir = os.path.expanduser("~/.claude/utsutsu-code")
+        parent_dir = os.path.join(AGENT_HOME, "utsutsu-code")
         spawn_signal = os.path.join(parent_dir, "spawn_child")
         os.makedirs(parent_dir, exist_ok=True)
         payload = {"signal_dir": signal_dir}

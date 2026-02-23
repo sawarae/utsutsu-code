@@ -1,6 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Directory, File, FileSystemEvent, Platform, Process, ProcessSignal, ProcessStartMode;
+import 'dart:io'
+    show
+        Directory,
+        File,
+        FileSystemEvent,
+        Platform,
+        Process,
+        ProcessSignal,
+        ProcessStartMode;
 
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
@@ -46,30 +54,38 @@ void main(List<String> args) async {
       await windowManager.show();
     });
 
-    runApp(MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        scaffoldBackgroundColor: Colors.transparent,
-        canvasColor: Colors.transparent,
+    runApp(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          scaffoldBackgroundColor: Colors.transparent,
+          canvasColor: Colors.transparent,
+        ),
+        home: SwarmApp(
+          signalDir: config.signalDir ?? _defaultSignalDir(),
+          config: winConfig,
+          collisionEnabled: config.collision,
+          modelsDir: config.modelsDir,
+          model: config.model,
+          screenWidth: screenSize.width,
+          screenHeight: screenSize.height,
+        ),
       ),
-      home: SwarmApp(
-        signalDir: config.signalDir ?? _defaultSignalDir(),
-        config: winConfig,
-        collisionEnabled: config.collision,
-        modelsDir: config.modelsDir,
-        model: config.model,
-        screenWidth: screenSize.width,
-        screenHeight: screenSize.height,
-      ),
-    ));
+    );
     return;
   }
 
   // Wander mode uses a smaller window; extra width for outline dilation padding
-  final defaultWidth = config.wander ? winConfig.wanderWidth : winConfig.mainWidth;
-  final defaultHeight = config.wander ? winConfig.wanderHeight : winConfig.mainHeight;
-  final windowSize =
-      Size(config.width ?? defaultWidth, config.height ?? defaultHeight);
+  final defaultWidth = config.wander
+      ? winConfig.wanderWidth
+      : winConfig.mainWidth;
+  final defaultHeight = config.wander
+      ? winConfig.wanderHeight
+      : winConfig.mainHeight;
+  final windowSize = Size(
+    config.width ?? defaultWidth,
+    config.height ?? defaultHeight,
+  );
   final windowOptions = WindowOptions(
     size: windowSize,
     // On macOS, window_manager handles transparency via NSWindow.
@@ -112,7 +128,8 @@ void main(List<String> args) async {
       final screenSize = primaryDisplay.size;
       final x = config.offsetX ?? 0.0;
       // Calculate bottom position (accounting for taskbar/dock on Linux)
-      final y = screenSize.height - windowSize.height - (Platform.isLinux ? 60 : 0);
+      final y =
+          screenSize.height - windowSize.height - (Platform.isLinux ? 60 : 0);
       await windowManager.setPosition(Offset(x, y));
     }
 
@@ -125,6 +142,17 @@ void main(List<String> args) async {
 String _defaultSignalDir() {
   final home =
       Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
+  if (home == null) {
+    return '.claude/utsutsu-code';
+  }
+  final claudeDir = Directory('$home/.claude');
+  final codexDir = Directory('$home/.codex');
+  if (claudeDir.existsSync()) {
+    return '$home/.claude/utsutsu-code';
+  }
+  if (codexDir.existsSync()) {
+    return '$home/.codex/utsutsu-code';
+  }
   return '$home/.claude/utsutsu-code';
 }
 
@@ -230,7 +258,11 @@ class MascotApp extends StatefulWidget {
   final _AppConfig config;
   final WindowConfig windowConfig;
 
-  const MascotApp({super.key, required this.config, required this.windowConfig});
+  const MascotApp({
+    super.key,
+    required this.config,
+    required this.windowConfig,
+  });
 
   @override
   State<MascotApp> createState() => _MascotAppState();
@@ -310,7 +342,9 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
       });
       if (_wanderChildren.length < before) {
         _persistChildPids();
-        debugPrint('Reaped dead wander children: ${before - _wanderChildren.length} removed, ${_wanderChildren.length} remaining');
+        debugPrint(
+          'Reaped dead wander children: ${before - _wanderChildren.length} removed, ${_wanderChildren.length} remaining',
+        );
       }
     });
   }
@@ -327,12 +361,14 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
       // use a different approach: check if the dismiss signal was written.
       // Fallback: use Process.run to query tasklist.
       try {
-        final result = Process.runSync(
-          'tasklist',
-          ['/FI', 'PID eq $pid', '/NH'],
-        );
-        return RegExp(r'\b' + pid.toString() + r'\b')
-            .hasMatch(result.stdout.toString());
+        final result = Process.runSync('tasklist', [
+          '/FI',
+          'PID eq $pid',
+          '/NH',
+        ]);
+        return RegExp(
+          r'\b' + pid.toString() + r'\b',
+        ).hasMatch(result.stdout.toString());
       } catch (_) {
         return true; // Assume alive on error to avoid premature reaping
       }
@@ -356,16 +392,22 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     }
 
     try {
-      _spawnWatcher = dir.watch(events: FileSystemEvent.create).listen((event) {
-        if (event.path.endsWith('/spawn_child') || event.path.endsWith(r'\spawn_child')) {
-          _checkSpawnSignal();
-        }
-      }, onError: (_) {
-        // Fallback to polling on watch error
-        _spawnWatcher?.cancel();
-        _spawnWatcher = null;
-        _startSpawnPolling();
-      });
+      _spawnWatcher = dir
+          .watch(events: FileSystemEvent.create)
+          .listen(
+            (event) {
+              if (event.path.endsWith('/spawn_child') ||
+                  event.path.endsWith(r'\spawn_child')) {
+                _checkSpawnSignal();
+              }
+            },
+            onError: (_) {
+              // Fallback to polling on watch error
+              _spawnWatcher?.cancel();
+              _spawnWatcher = null;
+              _startSpawnPolling();
+            },
+          );
     } catch (_) {
       _startSpawnPolling();
     }
@@ -430,8 +472,9 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
             final name = p.basename(entity.path);
             if (!name.startsWith('task-')) continue;
 
-            final hasDismiss =
-                File('${entity.path}/mascot_dismiss').existsSync();
+            final hasDismiss = File(
+              '${entity.path}/mascot_dismiss',
+            ).existsSync();
             final isTracked = knownSignalDirs.contains(entity.path);
 
             // Delete if dismissed or not tracked by any active wander child
@@ -549,25 +592,25 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
   void _launchSwarmOverlay(String model) {
     final exe = Platform.resolvedExecutable;
     final parentDir = widget.config.signalDir ?? _defaultSignalDir();
-    final args = [
-      '--swarm',
-      '--signal-dir', parentDir,
-      '--model', model,
-    ];
+    final args = ['--swarm', '--signal-dir', parentDir, '--model', model];
     if (widget.config.modelsDir != null) {
       args.addAll(['--models-dir', widget.config.modelsDir!]);
     }
-    Process.start(exe, args, mode: ProcessStartMode.detached).then((process) {
-      _swarmOverlay = _WanderChild(pid: process.pid, signalDir: parentDir);
-      debugPrint('Launched swarm overlay: pid=${process.pid}');
-    }).catchError((e) {
-      debugPrint('Failed to launch swarm overlay: $e');
-    });
+    Process.start(exe, args, mode: ProcessStartMode.detached)
+        .then((process) {
+          _swarmOverlay = _WanderChild(pid: process.pid, signalDir: parentDir);
+          debugPrint('Launched swarm overlay: pid=${process.pid}');
+        })
+        .catchError((e) {
+          debugPrint('Failed to launch swarm overlay: $e');
+        });
   }
 
   void _spawnWanderProcess(String signalDir, String model) {
     if (_wanderChildren.length >= _wc.maxChildren) {
-      debugPrint('Max wander children reached (${_wc.maxChildren}), skipping spawn');
+      debugPrint(
+        'Max wander children reached (${_wc.maxChildren}), skipping spawn',
+      );
       return;
     }
 
@@ -575,8 +618,10 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     final args = [
       '--wander',
       '--no-outline',
-      '--signal-dir', signalDir,
-      '--model', model,
+      '--signal-dir',
+      signalDir,
+      '--model',
+      model,
     ];
     // Pass models dir if specified
     if (widget.config.modelsDir != null) {
@@ -585,15 +630,24 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     // Use the exe's directory as working directory so the child can find
     // its data/ folder (Flutter assets, config files, etc.).
     final exeDir = File(exe).parent.path;
-    Process.start(exe, args,
-        mode: ProcessStartMode.detached,
-        workingDirectory: exeDir).then((process) {
-      _wanderChildren.add(_WanderChild(pid: process.pid, signalDir: signalDir));
-      _persistChildPids();
-      debugPrint('Spawned wander mascot: pid=${process.pid} (${_wanderChildren.length}/${_wc.maxChildren})');
-    }).catchError((e) {
-      debugPrint('Failed to spawn wander mascot: $e');
-    });
+    Process.start(
+          exe,
+          args,
+          mode: ProcessStartMode.detached,
+          workingDirectory: exeDir,
+        )
+        .then((process) {
+          _wanderChildren.add(
+            _WanderChild(pid: process.pid, signalDir: signalDir),
+          );
+          _persistChildPids();
+          debugPrint(
+            'Spawned wander mascot: pid=${process.pid} (${_wanderChildren.length}/${_wc.maxChildren})',
+          );
+        })
+        .catchError((e) {
+          debugPrint('Failed to spawn wander mascot: $e');
+        });
   }
 
   void _removeChildBySignalDir(String signalDir) {
@@ -708,7 +762,8 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
                 key: ValueKey(_children[i].signalDir),
                 controller: _children[i].controller,
                 outlineEnabled: widget.config.outline,
-                onDismissComplete: () => _removeChildBySignalDir(_children[i].signalDir),
+                onDismissComplete: () =>
+                    _removeChildBySignalDir(_children[i].signalDir),
               ),
             ),
         ],
