@@ -11,6 +11,17 @@ import sys
 import uuid
 
 
+def _resolve_agent_home():
+    home = os.path.expanduser("~")
+    claude = os.path.join(home, ".claude")
+    codex = os.path.join(home, ".codex")
+    if os.path.isdir(claude):
+        return claude
+    if os.path.isdir(codex):
+        return codex
+    return claude
+
+
 def main():
     data = json.load(sys.stdin)
 
@@ -22,18 +33,21 @@ def main():
     # Check if mascot app is running
     try:
         import subprocess
-        result = subprocess.run(
-            ["pgrep", "-f", "utsutsu_code"],
-            capture_output=True, timeout=2,
-        )
-        if result.returncode != 0:
+        checks = [
+            subprocess.run(["pgrep", "-f", "utsutsu_code"], capture_output=True, timeout=2),
+            subprocess.run(["pgrep", "-f", "/mascot$"], capture_output=True, timeout=2),
+            subprocess.run(["pgrep", "-f", "bundle/mascot"], capture_output=True, timeout=2),
+        ]
+        if all(r.returncode != 0 for r in checks):
             return
     except Exception:
         return
 
     prompt = tool_input.get("prompt", "")
 
-    parent_dir = os.path.expanduser("~/.claude/utsutsu-code")
+    agent_home = _resolve_agent_home()
+    parent_dir = os.path.join(agent_home, "utsutsu-code")
+    os.makedirs(parent_dir, exist_ok=True)
     task_id = uuid.uuid4().hex[:8]
     signal_dir = os.path.join(parent_dir, f"task-{task_id}")
 
@@ -48,7 +62,7 @@ def main():
 
     # Inject --signal-dir into the prompt (compact to reduce token overhead)
     inject = (
-        f"\n\n---\nMascot TTS: `python3 ~/.claude/hooks/mascot_tts.py"
+        f"\n\n---\nMascot TTS: `python3 {agent_home}/hooks/mascot_tts.py"
         f" --signal-dir {signal_dir}"
         ' --emotion KEY "msg"`\n'
         "Keys: Gentle/Joy/Trouble. Call at start+end. 30字以内、日本語で。"

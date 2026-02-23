@@ -12,6 +12,17 @@ import sys
 from pathlib import Path
 
 
+def _resolve_agent_home():
+    home = os.path.expanduser("~")
+    claude = os.path.join(home, ".claude")
+    codex = os.path.join(home, ".codex")
+    if os.path.isdir(claude):
+        return claude
+    if os.path.isdir(codex):
+        return codex
+    return claude
+
+
 def main():
     data = json.load(sys.stdin)
 
@@ -25,7 +36,7 @@ def main():
         return  # no-op: mascot was not spawned for this task
 
     task_id = match.group(1)
-    parent_dir = os.path.expanduser("~/.claude/utsutsu-code")
+    parent_dir = os.path.join(_resolve_agent_home(), "utsutsu-code")
     signal_dir = os.path.join(parent_dir, f"task-{task_id}")
 
     # Direct dismiss — parent handles cleanup

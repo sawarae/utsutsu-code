@@ -125,15 +125,28 @@ void main(List<String> args) async {
     } else {
       // Position at bottom-left of screen
       final primaryDisplay = await screenRetriever.getPrimaryDisplay();
-      final screenSize = primaryDisplay.size;
-      final x = config.offsetX ?? 0.0;
-      // Calculate bottom position (accounting for taskbar/dock on Linux)
-      final y =
-          screenSize.height - windowSize.height - (Platform.isLinux ? 60 : 0);
+      final visiblePos = primaryDisplay.visiblePosition ?? Offset.zero;
+      final visibleSize = primaryDisplay.visibleSize ?? primaryDisplay.size;
+      final x = visiblePos.dx + (config.offsetX ?? 0.0);
+      final y = visiblePos.dy + visibleSize.height - windowSize.height;
       await windowManager.setPosition(Offset(x, y));
     }
 
     await windowManager.show();
+
+    // Linux WMs may ignore the first move request before/at show time.
+    // Re-apply bottom-left positioning shortly after showing.
+    if (Platform.isLinux && !config.wander) {
+      final primaryDisplay = await screenRetriever.getPrimaryDisplay();
+      final visiblePos = primaryDisplay.visiblePosition ?? Offset.zero;
+      final visibleSize = primaryDisplay.visibleSize ?? primaryDisplay.size;
+      final x = visiblePos.dx + (config.offsetX ?? 0.0);
+      final y = visiblePos.dy + visibleSize.height - windowSize.height;
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      await windowManager.setPosition(Offset(x, y));
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      await windowManager.setPosition(Offset(x, y));
+    }
   });
 
   runApp(MascotApp(config: config, windowConfig: winConfig));
@@ -424,6 +437,17 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
   static String _defaultSignalDir() {
     final home =
         Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
+    if (home == null) {
+      return '.claude/utsutsu-code';
+    }
+    final claudeDir = Directory('$home/.claude');
+    final codexDir = Directory('$home/.codex');
+    if (claudeDir.existsSync()) {
+      return '$home/.claude/utsutsu-code';
+    }
+    if (codexDir.existsSync()) {
+      return '$home/.codex/utsutsu-code';
+    }
     return '$home/.claude/utsutsu-code';
   }
 
@@ -523,7 +547,9 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     // Swarm overlay is not yet supported on Windows (fullscreen transparent
     // overlay requires additional DWM/layered-window work), so always use
     // individual wander child processes there.
-    if (!Platform.isWindows && _wc.maxChildren > _wc.swarmThreshold) {
+    if (!Platform.isWindows &&
+        !Platform.isLinux &&
+        _wc.maxChildren > _wc.swarmThreshold) {
       if (_swarmOverlay == null) {
         _launchSwarmOverlay('blend_shape_mini');
       }
