@@ -155,13 +155,13 @@ TOML
 
 ### Step 3.5: グローバルフックのデプロイ
 
-セットアップ先を決める。**Codex なら `~/.codex`、それ以外は `~/.claude`** を使う:
+セットアップ先を決める。**`~/.claude` を優先し、無ければ `~/.codex`** を使う:
 
 ```bash
-if [ -d "$HOME/.codex" ]; then
-  AGENT_HOME="$HOME/.codex"
-else
+if [ -d "$HOME/.claude" ]; then
   AGENT_HOME="$HOME/.claude"
+else
+  AGENT_HOME="$HOME/.codex"
 fi
 echo "Using: $AGENT_HOME"
 ```
@@ -183,10 +183,10 @@ ln -sf "$(pwd)/.claude/hooks/tts_config.toml" "$AGENT_HOME/hooks/tts_config.toml
   cp .claude/hooks/tts_config.toml "$AGENT_HOME/hooks/tts_config.toml"
 # スキル
 for skill in tts mute; do
-  if [ -d "$(pwd)/.codex/skills/$skill" ]; then
-    ln -sf "$(pwd)/.codex/skills/$skill" "$AGENT_HOME/skills/$skill"
-  else
+  if [ -d "$(pwd)/.claude/skills/$skill" ]; then
     ln -sf "$(pwd)/.claude/skills/$skill" "$AGENT_HOME/skills/$skill"
+  else
+    ln -sf "$(pwd)/.codex/skills/$skill" "$AGENT_HOME/skills/$skill"
   fi
 done
 ```
@@ -201,10 +201,10 @@ cp .claude/hooks/mascot_tts.py "$AGENT_HOME/hooks/mascot_tts.py"
 cp .claude/hooks/tts_config.toml "$AGENT_HOME/hooks/tts_config.toml" 2>/dev/null || true
 # スキル
 for skill in tts mute; do
-  if [ -d "$(pwd)/.codex/skills/$skill" ]; then
-    cp -r ".codex/skills/$skill" "$AGENT_HOME/skills/"
-  else
+  if [ -d "$(pwd)/.claude/skills/$skill" ]; then
     cp -r ".claude/skills/$skill" "$AGENT_HOME/skills/"
+  else
+    cp -r ".codex/skills/$skill" "$AGENT_HOME/skills/"
   fi
 done
 ```
