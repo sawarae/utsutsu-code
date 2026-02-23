@@ -292,15 +292,14 @@ class _MascotWidgetState extends State<MascotWidget>
       // Poll window position during drag for velocity in Dart coordinates
       _nativeDragSamples.clear();
       _nativeDragPollTimer?.cancel();
-      _nativeDragPollTimer = Timer.periodic(
-        const Duration(milliseconds: 50),
-        (_) async {
-          final pos = await windowManager.getPosition();
-          final now = DateTime.now().millisecondsSinceEpoch;
-          _nativeDragSamples.add((now, pos.dx, pos.dy));
-          if (_nativeDragSamples.length > 5) _nativeDragSamples.removeAt(0);
-        },
-      );
+      _nativeDragPollTimer = Timer.periodic(const Duration(milliseconds: 50), (
+        _,
+      ) async {
+        final pos = await windowManager.getPosition();
+        final now = DateTime.now().millisecondsSinceEpoch;
+        _nativeDragSamples.add((now, pos.dx, pos.dy));
+        if (_nativeDragSamples.length > 5) _nativeDragSamples.removeAt(0);
+      });
     } else if (call.method == 'dragEnd') {
       _nativeDragPollTimer?.cancel();
       final pos = await windowManager.getPosition();
@@ -389,19 +388,22 @@ class _MascotWidgetState extends State<MascotWidget>
         child: ListenableBuilder(
           listenable: _controller,
           builder: (context, _) {
-            final charW = widget.renderWidth ??
+            final charW =
+                widget.renderWidth ??
                 (_isWander ? _wander!.windowWidth : 264.0);
             // Wander mode / swarm LOD0: fill the entire area so the
             // character head sits near the top and the speech bubble
             // (overlaid at top:0) appears right above it.
-            final charH = widget.renderHeight ??
+            final charH =
+                widget.renderHeight ??
                 (_isWander ? _wander!.windowHeight.toDouble() : 528.0);
 
             // Position bubble above the character head in wander mode.
             // macOS: character fills the window well → 20% from top.
             // Windows: smaller zoom leaves more headroom → 8% from top.
             final wanderBubbleTop = _isWander
-                ? (charH * (io.Platform.isWindows ? 0.08 : 0.20)).roundToDouble()
+                ? (charH * (io.Platform.isWindows ? 0.08 : 0.20))
+                      .roundToDouble()
                 : 0.0;
 
             return FadeTransition(
@@ -433,7 +435,11 @@ class _MascotWidgetState extends State<MascotWidget>
                           },
                           onPanStart: _isWander
                               ? (_) => _wander!.startDrag()
-                              : null,
+                              : (io.Platform.isLinux
+                                    ? (_) {
+                                        windowManager.startDragging();
+                                      }
+                                    : null),
                           onPanUpdate: _isWander
                               ? (details) => _wander!.updateDrag(details.delta)
                               : null,
@@ -444,7 +450,8 @@ class _MascotWidgetState extends State<MascotWidget>
                             child: _isWander
                                 ? Padding(
                                     padding: const EdgeInsets.symmetric(
-                                        horizontal: 8),
+                                      horizontal: 8,
+                                    ),
                                     child: _buildCharacter(),
                                   )
                                 : _buildCharacter(),

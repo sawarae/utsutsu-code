@@ -28,18 +28,14 @@ static void my_application_activate(GApplication* application) {
   // Remove window decorations for mascot app
   gtk_window_set_decorated(window, FALSE);
 
-  // Set as dock/panel type window (GNOME respects this for positioning)
-  gtk_window_set_type_hint(window, GDK_WINDOW_TYPE_HINT_DOCK);
+  // Use normal window hint so native moving/dragging behaves consistently.
+  // Dock hint can cause WM-specific resistance/jitter during drag.
+  gtk_window_set_type_hint(window, GDK_WINDOW_TYPE_HINT_NORMAL);
 
   // Always on top
   gtk_window_set_keep_above(window, TRUE);
 
-  // Set gravity to south-west for bottom-left positioning
-  gtk_window_set_gravity(window, GDK_GRAVITY_SOUTH_WEST);
-
-  // Position window at bottom-left (0, screen_height)
-  // With SOUTH_WEST gravity, coordinates are relative to bottom-left
-  gtk_window_move(window, 0, 0);
+  // Let Flutter side control final placement.
 
   // Use a header bar when running in GNOME as this is the common style used
   // by applications and is the setup most users will be using (e.g. Ubuntu

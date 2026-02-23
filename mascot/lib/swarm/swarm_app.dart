@@ -82,6 +82,7 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
       entityHeight: _entityHeight,
       collisionEnabled: widget.collisionEnabled,
       bottomMargin: widget.config.swarmBottomMargin,
+      spawnAtBottom: Platform.isLinux,
     );
 
     _spriteCache = SpriteCache();
@@ -144,12 +145,14 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
     if (!Platform.isMacOS) return;
     final rects = _simulation.entities
         .where((e) => !e.dismissed)
-        .map((e) => {
-              'x': e.x,
-              'y': e.y + e.bounceOffset,
-              'w': _entityWidth,
-              'h': _entityHeight,
-            })
+        .map(
+          (e) => {
+            'x': e.x,
+            'y': e.y + e.bounceOffset,
+            'w': _entityWidth,
+            'h': _entityHeight,
+          },
+        )
         .toList();
     _swarmModeChannel.invokeMethod('updateEntityRects', rects);
   }
@@ -160,15 +163,21 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
     final dir = Directory(widget.signalDir);
     if (!dir.existsSync()) dir.createSync(recursive: true);
     try {
-      _spawnWatcher = dir.watch(events: FileSystemEvent.create).listen((event) {
-        if (event.path.endsWith('/spawn_child') || event.path.endsWith(r'\spawn_child')) {
-          _checkSpawnSignal();
-        }
-      }, onError: (_) {
-        _spawnWatcher?.cancel();
-        _spawnWatcher = null;
-        _startSpawnPolling();
-      });
+      _spawnWatcher = dir
+          .watch(events: FileSystemEvent.create)
+          .listen(
+            (event) {
+              if (event.path.endsWith('/spawn_child') ||
+                  event.path.endsWith(r'\spawn_child')) {
+                _checkSpawnSignal();
+              }
+            },
+            onError: (_) {
+              _spawnWatcher?.cancel();
+              _spawnWatcher = null;
+              _startSpawnPolling();
+            },
+          );
     } catch (_) {
       _startSpawnPolling();
     }
@@ -493,7 +502,10 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
                         'Screen: ${widget.screenWidth.toInt()}x${widget.screenHeight.toInt()}\n'
                         'LOD0: $_activeEntityIndex\n'
                         '$positions',
-                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                        ),
                       ),
                     );
                   },

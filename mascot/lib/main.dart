@@ -31,7 +31,8 @@ void main(List<String> args) async {
   // Swarm mode: fullscreen transparent overlay
   if (config.swarm) {
     final primaryDisplay = await screenRetriever.getPrimaryDisplay();
-    final screenSize = primaryDisplay.size;
+    final visiblePos = primaryDisplay.visiblePosition ?? Offset.zero;
+    final screenSize = primaryDisplay.visibleSize ?? primaryDisplay.size;
 
     final windowOptions = WindowOptions(
       size: screenSize,
@@ -50,8 +51,13 @@ void main(List<String> args) async {
         await windowManager.setMovable(false);
       }
       await windowManager.setSize(screenSize);
-      await windowManager.setPosition(Offset.zero);
+      await windowManager.setPosition(visiblePos);
       await windowManager.show();
+      if (Platform.isLinux) {
+        // Linux WMs can ignore initial placement; re-apply once after show.
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+        await windowManager.setPosition(visiblePos);
+      }
     });
 
     runApp(
@@ -547,9 +553,7 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     // Swarm overlay is not yet supported on Windows (fullscreen transparent
     // overlay requires additional DWM/layered-window work), so always use
     // individual wander child processes there.
-    if (!Platform.isWindows &&
-        !Platform.isLinux &&
-        _wc.maxChildren > _wc.swarmThreshold) {
+    if (!Platform.isWindows && _wc.maxChildren > _wc.swarmThreshold) {
       if (_swarmOverlay == null) {
         _launchSwarmOverlay('blend_shape_mini');
       }
