@@ -553,7 +553,9 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     // Swarm overlay is not yet supported on Windows (fullscreen transparent
     // overlay requires additional DWM/layered-window work), so always use
     // individual wander child processes there.
-    if (!Platform.isWindows && _wc.maxChildren > _wc.swarmThreshold) {
+    // Linux swarm overlay currently captures clicks across the entire screen.
+    // Keep Linux on per-child wander windows unless --swarm is explicitly used.
+    if (!Platform.isWindows && !Platform.isLinux && _wc.maxChildren > _wc.swarmThreshold) {
       if (_swarmOverlay == null) {
         _launchSwarmOverlay('blend_shape_mini');
       }
