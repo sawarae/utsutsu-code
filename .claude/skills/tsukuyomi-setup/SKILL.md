@@ -1,7 +1,6 @@
 ---
 name: tsukuyomi-setup
 description: つくよみちゃんボイス(COEIROINK v2)セットアップ・テスト・口パク設定
-user_invocable: true
 ---
 
 # /tsukuyomi-setup - つくよみちゃんボイスセットアップ

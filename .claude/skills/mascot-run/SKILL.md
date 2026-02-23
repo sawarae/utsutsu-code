@@ -1,7 +1,6 @@
 ---
 name: mascot-run
 description: マスコットアプリとCOEIROINKの起動（セットアップ済み前提）
-user_invocable: true
 ---
 
 # /mascot-run - マスコットアプリ起動

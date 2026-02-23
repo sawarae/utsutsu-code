@@ -1,7 +1,6 @@
 ---
 name: otogee
 description: ターミナル音ゲー - つくよみちゃんと一緒にリズムゲーム
-user_invocable: true
 ---
 
 # /otogee - Terminal Rhythm Game

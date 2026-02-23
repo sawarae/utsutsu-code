@@ -1,3 +1,8 @@
+---
+name: mascot-subagent-test
+description: 子マスコットのスポーン・サブエージェントTTS・ディスミスの統合フローをテストする
+---
+
 # /mascot-subagent-test - サブエージェントマスコット統合テスト
 
 子マスコットのスポーン → サブエージェントTTS → ディスミスの一連フローをテストする。
