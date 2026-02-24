@@ -5,6 +5,7 @@ import 'toml_parser.dart';
 class ModelConfig {
   final String modelDirPath;
   final String modelFile;
+  final String? cutinFile;
   final String name;
   final String idleEmotion;
   final double cameraZoom;
@@ -16,9 +17,15 @@ class ModelConfig {
   final String fallbackMouthOpen;
   final String fallbackMouthClosed;
 
+  // [cutin] section — cut-in overlay display settings
+  final double? cutinZoom;
+  final double? cutinCameraY;
+  final double? cutinCharWidth;
+
   const ModelConfig._({
     required this.modelDirPath,
     required this.modelFile,
+    this.cutinFile,
     required this.name,
     required this.idleEmotion,
     required this.cameraZoom,
@@ -29,6 +36,9 @@ class ModelConfig {
     required this.emotionMappings,
     required this.fallbackMouthOpen,
     required this.fallbackMouthClosed,
+    this.cutinZoom,
+    this.cutinCameraY,
+    this.cutinCharWidth,
   });
 
   /// Load model config from a directory containing `emotions.toml`.
@@ -89,6 +99,7 @@ class ModelConfig {
     final model = toml['model'] as Map<String, dynamic>? ?? {};
     final name = (model['name'] as String?) ?? 'Unknown';
     final modelFile = (model['file'] as String?) ?? 'model.inp';
+    final cutinFile = model['cutin_file'] as String?;
     final idleEmotion = (model['idle_emotion'] as String?) ?? 'Gentle';
 
     // [camera] section
@@ -107,6 +118,12 @@ class ModelConfig {
         'assets/fallback/mouth_open.png';
     final fallbackMouthClosed = (fallback['mouth_closed'] as String?) ??
         'assets/fallback/mouth_closed.png';
+
+    // [cutin] section
+    final cutinRaw = toml['cutin'] as Map<String, dynamic>? ?? {};
+    final cutinZoom = _toDouble(cutinRaw['zoom']);
+    final cutinCameraY = _toDouble(cutinRaw['camera_y']);
+    final cutinCharWidth = _toDouble(cutinRaw['char_width']);
 
     // [defaults] section
     final defaultsRaw = toml['defaults'] as Map<String, dynamic>? ?? {};
@@ -133,6 +150,7 @@ class ModelConfig {
     return ModelConfig._(
       modelDirPath: dirPath,
       modelFile: modelFile,
+      cutinFile: cutinFile,
       name: name,
       idleEmotion: idleEmotion,
       cameraZoom: zoom,
@@ -143,6 +161,9 @@ class ModelConfig {
       emotionMappings: emotions,
       fallbackMouthOpen: fallbackMouthOpen,
       fallbackMouthClosed: fallbackMouthClosed,
+      cutinZoom: cutinZoom,
+      cutinCameraY: cutinCameraY,
+      cutinCharWidth: cutinCharWidth,
     );
   }
 
@@ -173,6 +194,10 @@ class ModelConfig {
 
   /// Path to the model file in the model directory.
   String get modelFilePath => '$modelDirPath/$modelFile';
+
+  /// Path to the cut-in model file, if configured.
+  String? get cutinModelFilePath =>
+      cutinFile != null ? '$modelDirPath/$cutinFile' : null;
 
   @override
   bool operator ==(Object other) =>

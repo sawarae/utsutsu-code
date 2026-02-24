@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0e27"/>
+      <stop offset="100%" stop-color="#1a1040"/>
+    </linearGradient>
+    <linearGradient id="line_grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00e5ff" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#00e5ff" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#00e5ff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="60%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#7c4dff" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#7c4dff" stop-opacity="0"/>
+    </radialGradient>
+    <!-- Grid pattern -->
+    <pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse">
+      <rect width="60" height="60" fill="none" stroke="#00e5ff" stroke-width="0.5" stroke-opacity="0.15"/>
+    </pattern>
+    <!-- Hex shape -->
+    <polygon id="hex" points="30,0 60,17 60,52 30,69 0,52 0,17" fill="none" stroke="#00e5ff" stroke-width="1"/>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <rect width="1920" height="1080" fill="url(#grid)"/>
+  <rect width="1920" height="1080" fill="url(#glow)"/>
+  <!-- Horizontal scan lines -->
+  <rect y="200" width="1920" height="1" fill="url(#line_grad)"/>
+  <rect y="400" width="1920" height="1" fill="url(#line_grad)"/>
+  <rect y="540" width="1920" height="2" fill="#00e5ff" opacity="0.3"/>
+  <rect y="680" width="1920" height="1" fill="url(#line_grad)"/>
+  <rect y="880" width="1920" height="1" fill="url(#line_grad)"/>
+  <!-- Scattered hexagons -->
+  <use href="#hex" transform="translate(100,50) scale(0.8)" opacity="0.2"/>
+  <use href="#hex" transform="translate(300,300) scale(1.2)" opacity="0.15"/>
+  <use href="#hex" transform="translate(1500,100) scale(1.0)" opacity="0.2"/>
+  <use href="#hex" transform="translate(1700,700) scale(0.9)" opacity="0.15"/>
+  <use href="#hex" transform="translate(200,800) scale(0.7)" opacity="0.12"/>
+  <use href="#hex" transform="translate(800,900) scale(1.1)" opacity="0.15"/>
+  <use href="#hex" transform="translate(1300,500) scale(0.6)" opacity="0.1"/>
+  <!-- Accent corner brackets -->
+  <g stroke="#00e5ff" stroke-width="2" fill="none" opacity="0.5">
+    <!-- Top-left bracket -->
+    <polyline points="40,20 20,20 20,60"/>
+    <!-- Top-right bracket -->
+    <polyline points="1880,20 1900,20 1900,60"/>
+    <!-- Bottom-left bracket -->
+    <polyline points="40,1060 20,1060 20,1020"/>
+    <!-- Bottom-right bracket -->
+    <polyline points="1880,1060 1900,1060 1900,1020"/>
+  </g>
+  <!-- Data stream lines -->
+  <g opacity="0.3">
+    <rect x="100" y="0" width="2" height="1080" fill="#7c4dff" opacity="0.3"/>
+    <rect x="500" y="0" width="1" height="1080" fill="#00e5ff" opacity="0.2"/>
+    <rect x="1400" y="0" width="1" height="1080" fill="#00e5ff" opacity="0.2"/>
+    <rect x="1800" y="0" width="2" height="1080" fill="#7c4dff" opacity="0.3"/>
+  </g>
+  <!-- Top/bottom accent bars -->
+  <rect y="0" width="1920" height="3" fill="#00e5ff" opacity="0.6"/>
+  <rect y="1077" width="1920" height="3" fill="#00e5ff" opacity="0.6"/>
+</svg>

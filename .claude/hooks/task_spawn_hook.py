@@ -3,12 +3,25 @@
 
 Spawns a child mascot and injects --signal-dir into the subagent prompt.
 The parent mascot handles dir creation, model selection, TTS, and cleanup.
+
+Uses tool_use_id -> task_id mapping file so PostToolUse dismiss hook can
+find the correct task_id (PostToolUse does not receive updatedInput).
 """
 
 import json
 import os
 import sys
 import uuid
+
+_DEBUG = os.environ.get("MASCOT_DEBUG") == "1"
+
+
+def _debug_dump(parent_dir, filename, data):
+    if not _DEBUG:
+        return
+    path = os.path.join(parent_dir, filename)
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False, default=str)
 
 
 def _resolve_agent_home():
@@ -33,13 +46,24 @@ def main():
     # Check if mascot app is running
     try:
         import subprocess
-        checks = [
-            subprocess.run(["pgrep", "-f", "utsutsu_code"], capture_output=True, timeout=2),
-            subprocess.run(["pgrep", "-f", "/mascot$"], capture_output=True, timeout=2),
-            subprocess.run(["pgrep", "-f", "bundle/mascot"], capture_output=True, timeout=2),
-        ]
-        if all(r.returncode != 0 for r in checks):
-            return
+        import platform
+        if platform.system() == "Windows":
+            # Avoid tasklist /FI — MSYS/Git Bash converts /FI to a path
+            result = subprocess.run(
+                ["tasklist"],
+                capture_output=True, text=True, timeout=2,
+            )
+            out = result.stdout.lower()
+            if "utsutsu_code.exe" not in out and "mascot.exe" not in out:
+                return
+        else:
+            checks = [
+                subprocess.run(["pgrep", "-f", "utsutsu_code"], capture_output=True, timeout=2),
+                subprocess.run(["pgrep", "-f", "/mascot$"], capture_output=True, timeout=2),
+                subprocess.run(["pgrep", "-f", "bundle/mascot"], capture_output=True, timeout=2),
+            ]
+            if all(r.returncode != 0 for r in checks):
+                return
     except Exception:
         return
 
@@ -51,8 +75,19 @@ def main():
     task_id = uuid.uuid4().hex[:8]
     signal_dir = os.path.join(parent_dir, f"task-{task_id}")
 
-    # Spawn signal: envelope format v1 (parent decides policy)
-    spawn_signal = os.path.join(parent_dir, "spawn_child")
+    _debug_dump(parent_dir, "_spawn_debug.json", data)
+
+    # Save tool_use_id -> task_id mapping for dismiss hook
+    tool_use_id = data.get("tool_use_id", "")
+    if tool_use_id:
+        mapping_dir = os.path.join(parent_dir, "_task_mappings")
+        os.makedirs(mapping_dir, exist_ok=True)
+        mapping_path = os.path.join(mapping_dir, tool_use_id)
+        with open(mapping_path, "w") as f:
+            f.write(task_id)
+
+    # Spawn signal: per-task file to avoid overwrite on parallel spawns
+    spawn_signal = os.path.join(parent_dir, f"spawn_child_{task_id}")
     with open(spawn_signal, "w", encoding="utf-8") as f:
         json.dump({
             "version": "1",

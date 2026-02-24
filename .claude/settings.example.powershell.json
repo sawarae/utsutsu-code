@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'python3 ~/.claude/hooks/task_spawn_hook.py'",
+            "command": "powershell -c \"python3 ~\\.claude\\hooks\\task_spawn_hook.py\"",
             "timeout": 5000
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'python3 ~/.claude/hooks/task_dismiss_hook.py'",
+            "command": "powershell -c \"python3 ~\\.claude\\hooks\\task_dismiss_hook.py\"",
             "timeout": 5000
           }
         ]
