@@ -618,9 +618,48 @@ def main():
         print(json.dumps({"status": "spawned", "signal_dir": signal_dir}))
         return
 
-    # Custom message from argv, stdin JSON, or default
+    # Custom message from argv, stdin JSON, or default.
+    # Some callers pass full event JSON via argv; avoid speaking raw JSON.
     if argv:
         message = " ".join(argv)
+        s = message.strip()
+        # Case 1: entire argv is JSON payload.
+        if s.startswith("{") and s.endswith("}"):
+            try:
+                obj = json.loads(s)
+            except Exception:
+                pass
+            else:
+                if isinstance(obj, dict):
+                    for key in ("message", "text", "content"):
+                        v = obj.get(key)
+                        if isinstance(v, str) and v.strip():
+                            message = v.strip()
+                            break
+                    else:
+                        message = DEFAULT_MESSAGE
+        # Case 2: fixed text + trailing JSON payload (e.g. "Done { ... }").
+        else:
+            brace = s.find("{")
+            if brace != -1 and s.endswith("}"):
+                candidate = s[brace:].strip()
+                try:
+                    obj = json.loads(candidate)
+                except Exception:
+                    pass
+                else:
+                    if isinstance(obj, dict):
+                        prefix = s[:brace].strip()
+                        if prefix:
+                            message = prefix
+                        else:
+                            for key in ("message", "text", "content"):
+                                v = obj.get(key)
+                                if isinstance(v, str) and v.strip():
+                                    message = v.strip()
+                                    break
+                            else:
+                                message = DEFAULT_MESSAGE
     else:
         message = hook_input.get("message", DEFAULT_MESSAGE)
     max_len = MAX_MESSAGE_LENGTH_EN if lang == "en" else MAX_MESSAGE_LENGTH_JA
