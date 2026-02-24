@@ -459,35 +459,33 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     final dir = Directory(signalDir);
     if (!dir.existsSync()) dir.createSync(recursive: true);
 
-    // On Windows, Directory.watch() starts successfully but may not deliver
-    // FileSystemEvent.create events reliably. Always use polling there.
-    if (Platform.isWindows) {
-      _startSpawnPolling();
-      return;
-    }
+    // Always use polling as the primary mechanism — FSEvents (macOS) and
+    // Directory.watch() on Windows are unreliable for detecting files
+    // created by external processes in ~/.claude/.
+    _startSpawnPolling();
 
-    try {
-      _spawnWatcher = dir
-          .watch(events: FileSystemEvent.create | FileSystemEvent.modify)
-          .listen((event) {
-        if (event.path.contains('spawn_child')) {
-          _checkSpawnSignals();
-        }
-        if (event.path.endsWith('/cutin') || event.path.endsWith(r'\cutin')) {
-          _checkCutInSignal();
-        }
-      }, onError: (_) {
-        // Fallback to polling on watch error
-        _spawnWatcher?.cancel();
-        _spawnWatcher = null;
-        _startSpawnPolling();
-      });
-    } catch (_) {
-      _startSpawnPolling();
+    // Also set up FSEvents/inotify as a fast-path on non-Windows platforms.
+    if (!Platform.isWindows) {
+      try {
+        _spawnWatcher = dir
+            .watch(events: FileSystemEvent.create | FileSystemEvent.modify)
+            .listen((event) {
+          if (event.path.contains('spawn_child')) {
+            _checkSpawnSignals();
+          }
+          if (event.path.endsWith('/cutin') || event.path.endsWith(r'\cutin')) {
+            _checkCutInSignal();
+          }
+        }, onError: (_) {
+          _spawnWatcher?.cancel();
+          _spawnWatcher = null;
+        });
+      } catch (_) {
+        // Polling is already running, ignore watch failure
+      }
     }
 
     // Check for signals that were written before the watcher was ready
-    // (e.g. left over from a crash, or written during startup)
     _checkSpawnSignals();
     _checkCutInSignal();
   }
