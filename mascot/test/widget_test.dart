@@ -1271,4 +1271,144 @@ width = 500.0
           reason: 'Second rename should fail since original was already claimed');
     });
   });
+
+  // ── Payment Request Signal Tests ──────────────────────────
+
+  group('Payment request signal', () {
+    late Directory signalDir;
+    late MascotController controller;
+
+    setUp(() {
+      signalDir = Directory.systemTemp.createTempSync('payment_test_');
+      File('${signalDir.path}/mascot_speaking').parent.createSync(recursive: true);
+      controller = MascotController.withConfig(
+        '${signalDir.path}/mascot_speaking',
+        _blendShapeConfig('/tmp/test'),
+      );
+    });
+
+    tearDown(() {
+      controller.dispose();
+      signalDir.deleteSync(recursive: true);
+    });
+
+    test('payment_request signal triggers speaking with Trouble emotion', () async {
+      final paymentFile = File('${signalDir.path}/payment_request');
+      final signal = jsonEncode({
+        'version': '1',
+        'type': 'mascot.payment_request',
+        'payload': {
+          'message': 'リミットが近づいてます…課金お願いします！',
+          'emotion': 'Trouble',
+        },
+      });
+      paymentFile.writeAsStringSync(signal);
+
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+
+      expect(controller.isSpeaking, true);
+      expect(controller.isPaymentRequested, true);
+      expect(controller.message, 'リミットが近づいてます…課金お願いします！');
+      expect(controller.parameters['Trouble'], 1.0);
+    });
+
+    test('payment_request is one-shot (does not re-trigger)', () async {
+      final paymentFile = File('${signalDir.path}/payment_request');
+      paymentFile.writeAsStringSync(jsonEncode({
+        'version': '1',
+        'type': 'mascot.payment_request',
+        'payload': {
+          'message': 'テスト課金メッセージ',
+          'emotion': 'Trouble',
+        },
+      }));
+
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(controller.isPaymentRequested, true);
+
+      // Overwrite with new content — should NOT re-trigger
+      paymentFile.writeAsStringSync(jsonEncode({
+        'version': '1',
+        'type': 'mascot.payment_request',
+        'payload': {
+          'message': '二回目のメッセージ',
+          'emotion': 'Trouble',
+        },
+      }));
+
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      // Message should still be the first one
+      expect(controller.message, 'テスト課金メッセージ');
+    });
+
+    test('payment_request does not trigger while already speaking', () async {
+      // Start speaking via normal signal first
+      File('${signalDir.path}/mascot_speaking')
+          .writeAsStringSync(jsonEncode({'message': '通常発話', 'emotion': 'Joy'}));
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(controller.isSpeaking, true);
+
+      // Write payment request — should not trigger while speaking
+      File('${signalDir.path}/payment_request')
+          .writeAsStringSync(jsonEncode({
+        'version': '1',
+        'type': 'mascot.payment_request',
+        'payload': {'message': '課金お願い', 'emotion': 'Trouble'},
+      }));
+
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(controller.isPaymentRequested, false);
+      expect(controller.message, '通常発話');
+    });
+
+    test('payment_request with legacy JSON format works', () async {
+      File('${signalDir.path}/payment_request')
+          .writeAsStringSync(jsonEncode({
+        'message': 'レガシー課金メッセージ',
+        'emotion': 'Trouble',
+      }));
+
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+
+      expect(controller.isSpeaking, true);
+      expect(controller.isPaymentRequested, true);
+      expect(controller.message, 'レガシー課金メッセージ');
+    });
+
+    test('payment_request file is cleaned up on dispose', () async {
+      // Use a separate controller to avoid double-dispose in tearDown
+      final dir = Directory.systemTemp.createTempSync('payment_dispose_test_');
+      final c = MascotController.withConfig(
+        '${dir.path}/mascot_speaking',
+        _blendShapeConfig('/tmp/test'),
+      );
+      final paymentFile = File('${dir.path}/payment_request');
+      paymentFile.writeAsStringSync('test');
+
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+
+      c.dispose();
+      expect(paymentFile.existsSync(), false);
+      dir.deleteSync(recursive: true);
+    });
+
+    test('speaking stops normally but payment_request persists after file removal', () async {
+      // Trigger payment request
+      File('${signalDir.path}/payment_request')
+          .writeAsStringSync(jsonEncode({
+        'message': '課金テスト',
+        'emotion': 'Trouble',
+      }));
+
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(controller.isSpeaking, true);
+      expect(controller.isPaymentRequested, true);
+
+      // Normal signal file doesn't exist — payment_requested should prevent
+      // the speaking state from being cleared
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(controller.isSpeaking, true,
+          reason: 'Payment request should keep speaking state');
+    });
+  });
 }
