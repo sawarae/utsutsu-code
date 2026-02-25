@@ -48,6 +48,9 @@ class MascotController extends ChangeNotifier {
   bool get isSpeaking => _isSpeaking;
   bool get isListening => _isListening;
 
+  /// The currently active emotion name, or null when idle.
+  String? get currentEmotion => _currentEmotion;
+
   MascotController({
     String? signalDir,
     String? modelsDir,

@@ -11,6 +11,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'expression_service.dart';
 import 'mascot_controller.dart';
+import 'pachinko_effect.dart';
 import 'wander_controller.dart';
 
 class MascotWidget extends StatefulWidget {
@@ -65,8 +66,10 @@ class _MascotWidgetState extends State<MascotWidget>
   late final Animation<double> _jumpAnimation;
   late final AnimationController _dismissController;
   late final ExpressionService _expressionService;
+  late final PachinkoEffectController _effectController;
   bool _showBubble = false;
   String _bubbleText = '';
+  String? _lastEffectEmotion;
 
   PuppetController? _puppetController;
   bool _modelLoaded = false;
@@ -105,6 +108,7 @@ class _MascotWidgetState extends State<MascotWidget>
     );
     _expressionService = ExpressionService(_controller);
     _expressionService.addListener(_onBubblesChanged);
+    _effectController = PachinkoEffectController();
     _controller.addListener(_onControllerChanged);
     _wander?.addListener(_onWanderChanged);
     _wander?.onCollision = () {
@@ -242,6 +246,15 @@ class _MascotWidgetState extends State<MascotWidget>
       _syncParameters();
     }
 
+    // Trigger pachinko effects on emotion change
+    final emotion = _controller.currentEmotion;
+    if (emotion != null && emotion != _lastEffectEmotion) {
+      _lastEffectEmotion = emotion;
+      _effectController.triggerForEmotion(emotion);
+    } else if (emotion == null && _lastEffectEmotion != null) {
+      _lastEffectEmotion = null;
+    }
+
     final bubbleChanged = _showBubble != _controller.isSpeaking;
 
     final hasMessage =
@@ -354,6 +367,7 @@ class _MascotWidgetState extends State<MascotWidget>
     _controller.removeListener(_onControllerChanged);
     _expressionService.removeListener(_onBubblesChanged);
     _expressionService.dispose();
+    _effectController.dispose();
     _fadeController.dispose();
     _modelFadeController.dispose();
     _jumpController.dispose();
@@ -409,43 +423,46 @@ class _MascotWidgetState extends State<MascotWidget>
                   Positioned(
                     left: 0,
                     bottom: 0,
-                    child: AnimatedBuilder(
-                      animation: _jumpAnimation,
-                      builder: (context, child) {
-                        return Transform.translate(
-                          offset: Offset(0, _jumpAnimation.value),
-                          child: child,
-                        );
-                      },
-                      child: SizedBox(
-                        width: charW,
-                        height: charH,
-                        child: GestureDetector(
-                          // Opaque hit testing so drags work on transparent areas
-                          behavior: _isWander
-                              ? HitTestBehavior.opaque
-                              : HitTestBehavior.deferToChild,
-                          onSecondaryTap: () {
-                            _jumpController.forward(from: 0);
-                            _expressionService.expressRandom();
-                          },
-                          onPanStart: _isWander
-                              ? (_) => _wander!.startDrag()
-                              : null,
-                          onPanUpdate: _isWander
-                              ? (details) => _wander!.updateDrag(details.delta)
-                              : null,
-                          onPanEnd: _isWander
-                              ? (details) => _wander!.endDrag()
-                              : null,
-                          child: _buildWanderWrapper(
-                            child: _isWander
-                                ? Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 8),
-                                    child: _buildCharacter(),
-                                  )
-                                : _buildCharacter(),
+                    child: PachinkoEffectOverlay(
+                      controller: _effectController,
+                      child: AnimatedBuilder(
+                        animation: _jumpAnimation,
+                        builder: (context, child) {
+                          return Transform.translate(
+                            offset: Offset(0, _jumpAnimation.value),
+                            child: child,
+                          );
+                        },
+                        child: SizedBox(
+                          width: charW,
+                          height: charH,
+                          child: GestureDetector(
+                            // Opaque hit testing so drags work on transparent areas
+                            behavior: _isWander
+                                ? HitTestBehavior.opaque
+                                : HitTestBehavior.deferToChild,
+                            onSecondaryTap: () {
+                              _jumpController.forward(from: 0);
+                              _expressionService.expressRandom();
+                            },
+                            onPanStart: _isWander
+                                ? (_) => _wander!.startDrag()
+                                : null,
+                            onPanUpdate: _isWander
+                                ? (details) => _wander!.updateDrag(details.delta)
+                                : null,
+                            onPanEnd: _isWander
+                                ? (details) => _wander!.endDrag()
+                                : null,
+                            child: _buildWanderWrapper(
+                              child: _isWander
+                                  ? Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8),
+                                      child: _buildCharacter(),
+                                    )
+                                  : _buildCharacter(),
+                            ),
                           ),
                         ),
                       ),

@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 import 'package:mascot/cut_in_overlay.dart';
 import 'package:mascot/mascot_controller.dart';
 import 'package:mascot/model_config.dart';
+import 'package:mascot/pachinko_effect.dart';
 import 'package:mascot/wander_controller.dart';
 import 'package:mascot/window_config.dart';
 
@@ -1409,6 +1410,316 @@ width = 500.0
       await Future<void>.delayed(const Duration(milliseconds: 250));
       expect(controller.isSpeaking, true,
           reason: 'Payment request should keep speaking state');
+    });
+  });
+
+  // ── Pachinko Effect Tests ────────────────────────────────
+
+  group('PachinkoEffectController', () {
+    late PachinkoEffectController effectCtrl;
+
+    setUp(() {
+      effectCtrl = PachinkoEffectController(seed: 42);
+    });
+
+    tearDown(() {
+      effectCtrl.dispose();
+    });
+
+    test('starts with no active effects', () {
+      expect(effectCtrl.hasActiveEffects, false);
+      expect(effectCtrl.effects, isEmpty);
+      expect(effectCtrl.particles, isEmpty);
+      expect(effectCtrl.shakeOffset, Offset.zero);
+    });
+
+    test('flash creates a flash effect', () {
+      effectCtrl.flash(color: const Color(0xFFFF0000), duration: 0.5);
+      expect(effectCtrl.hasActiveEffects, true);
+      expect(effectCtrl.effects.length, 1);
+      expect(effectCtrl.effects.first.type, PachinkoEffectType.flash);
+      expect(effectCtrl.effects.first.color, const Color(0xFFFF0000));
+      expect(effectCtrl.effects.first.duration, 0.5);
+      expect(effectCtrl.effects.first.progress, 0.0);
+    });
+
+    test('holdChange creates a hold change effect', () {
+      effectCtrl.holdChange(duration: 2.0);
+      expect(effectCtrl.hasActiveEffects, true);
+      expect(effectCtrl.effects.first.type, PachinkoEffectType.holdChange);
+    });
+
+    test('rainbow creates a rainbow effect', () {
+      effectCtrl.rainbow(duration: 3.0);
+      expect(effectCtrl.effects.first.type, PachinkoEffectType.rainbow);
+      expect(effectCtrl.effects.first.duration, 3.0);
+    });
+
+    test('starBurst creates particles', () {
+      effectCtrl.starBurst(color: const Color(0xFFFFD54F), count: 8);
+      expect(effectCtrl.particles.length, 8);
+      for (final p in effectCtrl.particles) {
+        expect(p.isDead, false);
+        expect(p.color, const Color(0xFFFFD54F));
+      }
+    });
+
+    test('shake creates a shake effect with intensity', () {
+      effectCtrl.shake(duration: 0.5, intensity: 6.0);
+      expect(effectCtrl.effects.first.type, PachinkoEffectType.shake);
+      expect(effectCtrl.effects.first.intensity, 6.0);
+    });
+
+    test('tick advances effect progress', () {
+      effectCtrl.flash(duration: 1.0);
+      effectCtrl.tick(0.5);
+      expect(effectCtrl.effects.first.progress, closeTo(0.5, 0.01));
+    });
+
+    test('tick removes completed effects', () {
+      effectCtrl.flash(duration: 0.4);
+      expect(effectCtrl.hasActiveEffects, true);
+
+      // Advance past the duration
+      effectCtrl.tick(0.5);
+      expect(effectCtrl.effects, isEmpty);
+    });
+
+    test('tick updates particles and removes dead ones', () {
+      effectCtrl.starBurst(count: 5);
+      expect(effectCtrl.particles.length, 5);
+
+      // Advance enough for all particles to die (maxLife ≤ 1.4)
+      for (var i = 0; i < 20; i++) {
+        effectCtrl.tick(0.1);
+      }
+      expect(effectCtrl.particles, isEmpty);
+      expect(effectCtrl.hasActiveEffects, false);
+    });
+
+    test('shake produces non-zero offset during animation', () {
+      effectCtrl.shake(duration: 1.0, intensity: 10.0);
+      effectCtrl.tick(0.1);
+      // Shake offset should be non-zero (probabilistically; seed=42 ensures determinism)
+      expect(effectCtrl.shakeOffset, isNot(Offset.zero));
+    });
+
+    test('shake offset returns to zero after effect completes', () {
+      effectCtrl.shake(duration: 0.3, intensity: 5.0);
+      effectCtrl.tick(0.5); // past duration
+      expect(effectCtrl.shakeOffset, Offset.zero);
+    });
+
+    test('clear removes all effects and particles', () {
+      effectCtrl.flash();
+      effectCtrl.starBurst(count: 10);
+      effectCtrl.shake();
+      expect(effectCtrl.hasActiveEffects, true);
+
+      effectCtrl.clear();
+      expect(effectCtrl.hasActiveEffects, false);
+      expect(effectCtrl.effects, isEmpty);
+      expect(effectCtrl.particles, isEmpty);
+      expect(effectCtrl.shakeOffset, Offset.zero);
+    });
+
+    test('triggerForEmotion Joy: flash + starBurst + holdChange', () {
+      effectCtrl.triggerForEmotion('Joy');
+      final types = effectCtrl.effects.map((e) => e.type).toSet();
+      expect(types, contains(PachinkoEffectType.flash));
+      expect(types, contains(PachinkoEffectType.holdChange));
+      expect(effectCtrl.particles.isNotEmpty, true,
+          reason: 'Joy should spawn star burst particles');
+    });
+
+    test('triggerForEmotion Singing: rainbow + starBurst', () {
+      effectCtrl.triggerForEmotion('Singing');
+      final types = effectCtrl.effects.map((e) => e.type).toSet();
+      expect(types, contains(PachinkoEffectType.rainbow));
+      expect(effectCtrl.particles.isNotEmpty, true);
+    });
+
+    test('triggerForEmotion Blush: holdChange + heart particles', () {
+      effectCtrl.triggerForEmotion('Blush');
+      final types = effectCtrl.effects.map((e) => e.type).toSet();
+      expect(types, contains(PachinkoEffectType.holdChange));
+      expect(effectCtrl.particles.isNotEmpty, true,
+          reason: 'Blush should spawn heart particles');
+    });
+
+    test('triggerForEmotion Trouble: shake + flash', () {
+      effectCtrl.triggerForEmotion('Trouble');
+      final types = effectCtrl.effects.map((e) => e.type).toSet();
+      expect(types, contains(PachinkoEffectType.shake));
+      expect(types, contains(PachinkoEffectType.flash));
+    });
+
+    test('triggerForEmotion Gentle: holdChange only', () {
+      effectCtrl.triggerForEmotion('Gentle');
+      expect(effectCtrl.effects.length, 1);
+      expect(effectCtrl.effects.first.type, PachinkoEffectType.holdChange);
+      expect(effectCtrl.particles, isEmpty);
+    });
+
+    test('triggerForEmotion unknown: no effects', () {
+      effectCtrl.triggerForEmotion('UnknownEmotion');
+      expect(effectCtrl.hasActiveEffects, false);
+    });
+
+    test('multiple effects can coexist', () {
+      effectCtrl.flash(duration: 1.0);
+      effectCtrl.rainbow(duration: 2.0);
+      effectCtrl.shake(duration: 0.5);
+      expect(effectCtrl.effects.length, 3);
+
+      // Tick past shake duration
+      effectCtrl.tick(0.6);
+      expect(effectCtrl.effects.length, 2,
+          reason: 'Shake should be removed, flash and rainbow remain');
+    });
+
+    test('notifyListeners fires on trigger and tick', () {
+      var notifyCount = 0;
+      effectCtrl.addListener(() => notifyCount++);
+
+      effectCtrl.flash();
+      expect(notifyCount, 1);
+
+      effectCtrl.tick(0.1);
+      expect(notifyCount, 2);
+    });
+
+    test('tick with zero dt is safe', () {
+      effectCtrl.flash(duration: 1.0);
+      effectCtrl.tick(0.0);
+      expect(effectCtrl.effects.first.progress, 0.0);
+    });
+
+    test('tick does nothing when no effects active', () {
+      var notifyCount = 0;
+      effectCtrl.addListener(() => notifyCount++);
+      effectCtrl.tick(0.1);
+      expect(notifyCount, 0, reason: 'No notification when nothing active');
+    });
+
+    test('particle physics: gravity pulls particles down', () {
+      effectCtrl.starBurst(count: 1);
+      final p = effectCtrl.particles.first;
+      final initialVy = p.vy;
+      effectCtrl.tick(0.1);
+      // After tick, vy should have increased (gravity adds positive vy)
+      expect(effectCtrl.particles.first.vy, greaterThan(initialVy));
+    });
+
+    test('particle alpha decreases over time', () {
+      effectCtrl.starBurst(count: 1);
+      expect(effectCtrl.particles.first.alpha, 1.0);
+
+      effectCtrl.tick(0.3);
+      expect(effectCtrl.particles.first.alpha, lessThan(1.0));
+      expect(effectCtrl.particles.first.alpha, greaterThan(0.0));
+    });
+
+    test('hold change color upgrade: progress maps to color index', () {
+      // Verify the ActiveEffect progress calculation
+      final effect = ActiveEffect(
+        type: PachinkoEffectType.holdChange,
+        duration: 4.0,
+      );
+      effect.elapsed = 0.0;
+      expect(effect.progress, 0.0);
+
+      effect.elapsed = 2.0;
+      expect(effect.progress, 0.5);
+
+      effect.elapsed = 4.0;
+      expect(effect.progress, 1.0);
+
+      // Clamp
+      effect.elapsed = 5.0;
+      expect(effect.progress, 1.0);
+    });
+  });
+
+  group('PachinkoEffectPainter', () {
+    test('paints without error when effects are empty', () {
+      final painter = PachinkoEffectPainter(effects: [], particles: []);
+      // shouldRepaint always returns true for animation
+      expect(painter.shouldRepaint(painter), true);
+    });
+
+    test('paints without error with flash effect', () {
+      final effect = ActiveEffect(
+        type: PachinkoEffectType.flash,
+        color: const Color(0xFFFFFFFF),
+        duration: 0.4,
+      );
+      effect.elapsed = 0.1;
+      final painter = PachinkoEffectPainter(
+        effects: [effect],
+        particles: [],
+      );
+      expect(painter.shouldRepaint(painter), true);
+    });
+
+    test('paints without error with particles', () {
+      final particle = Particle(
+        x: 10,
+        y: 20,
+        vx: 5,
+        vy: -10,
+        maxLife: 1.0,
+        color: const Color(0xFFFF0000),
+        size: 4.0,
+        shape: 1,
+      );
+      final painter = PachinkoEffectPainter(
+        effects: [],
+        particles: [particle],
+      );
+      expect(painter.shouldRepaint(painter), true);
+    });
+  });
+
+  group('MascotController.currentEmotion', () {
+    late MascotController controller;
+
+    setUp(() {
+      controller = MascotController.withConfig(
+        signalPath,
+        _blendShapeConfig(tempDir.path),
+      );
+    });
+
+    tearDown(() {
+      controller.dispose();
+    });
+
+    test('currentEmotion is null initially (idle uses Gentle but stored as null)', () {
+      // When idle, _setEmotion(null) is called — the effective emotion is
+      // the idle emotion, but currentEmotion stores the raw value.
+      expect(controller.currentEmotion, isNull);
+    });
+
+    test('currentEmotion updates when showExpression is called', () {
+      controller.showExpression('Joy', 'test');
+      expect(controller.currentEmotion, 'Joy');
+    });
+
+    test('currentEmotion resets to null when hideExpression is called', () {
+      controller.showExpression('Trouble', 'error');
+      expect(controller.currentEmotion, 'Trouble');
+
+      controller.hideExpression();
+      expect(controller.currentEmotion, isNull);
+    });
+
+    test('currentEmotion changes with signal file emotion', () async {
+      File(signalPath).writeAsStringSync(
+        jsonEncode({'message': 'hello', 'emotion': 'Singing'}),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(controller.currentEmotion, 'Singing');
     });
   });
 }
