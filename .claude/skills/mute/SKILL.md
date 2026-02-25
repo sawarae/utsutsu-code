@@ -1,7 +1,6 @@
 ---
 name: mute
 description: TTS音声のミュート切り替え（マスコットアニメーションは維持）
-user_invocable: true
 ---
 
 # /mute - TTS Mute Toggle

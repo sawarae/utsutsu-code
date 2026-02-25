@@ -17,11 +17,25 @@ from pathlib import Path
 _DEBUG = os.environ.get("MASCOT_DEBUG") == "1"
 
 
+def _resolve_agent_home():
+    home = os.path.expanduser("~")
+    claude = os.path.join(home, ".claude")
+    codex = os.path.join(home, ".codex")
+    if os.path.isdir(claude):
+        return claude
+    if os.path.isdir(codex):
+        return codex
+    return claude
+
+
 def main():
     data = json.load(sys.stdin)
 
+    agent_home = _resolve_agent_home()
+    parent_dir = os.path.join(agent_home, "utsutsu-code")
+
     if _DEBUG:
-        parent_dir = os.path.expanduser("~/.claude/utsutsu-code")
+        os.makedirs(parent_dir, exist_ok=True)
         path = os.path.join(parent_dir, "_dismiss_debug.json")
         with open(path, "w") as f:
             json.dump(data, f, indent=2, ensure_ascii=False, default=str)
@@ -33,7 +47,6 @@ def main():
     if not tool_use_id:
         return
 
-    parent_dir = os.path.expanduser("~/.claude/utsutsu-code")
     mapping_path = os.path.join(parent_dir, "_task_mappings", tool_use_id)
 
     if not os.path.exists(mapping_path):
@@ -46,7 +59,6 @@ def main():
         os.remove(mapping_path)
     except OSError:
         pass
-
     signal_dir = os.path.join(parent_dir, f"task-{task_id}")
 
     # Direct dismiss — parent handles cleanup

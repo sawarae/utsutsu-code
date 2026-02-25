@@ -1,7 +1,6 @@
 ---
 name: tts-debug
 description: TTS engine status check, speaker test, and troubleshooting
-user_invocable: true
 ---
 
 # /tts-debug - TTS Engine Management
