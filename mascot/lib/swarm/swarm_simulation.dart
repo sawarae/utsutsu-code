@@ -19,6 +19,7 @@ class SwarmSimulation extends ChangeNotifier {
   final double entityHeight;
   final bool collisionEnabled;
   final double bottomMargin;
+  final bool spawnAtBottom;
 
   late final Ticker _ticker;
   late final CollisionGrid _grid;
@@ -39,6 +40,7 @@ class SwarmSimulation extends ChangeNotifier {
     required this.entityHeight,
     this.collisionEnabled = true,
     this.bottomMargin = 0,
+    this.spawnAtBottom = false,
   }) {
     _grid = CollisionGrid(
       cellSize: entityWidth,
@@ -57,13 +59,17 @@ class SwarmSimulation extends ChangeNotifier {
   /// Add a new entity at a random position, starting with a drop animation.
   MascotEntity addEntity({required String signalDir}) {
     final x = _rng.nextDouble() * (screenWidth - entityWidth);
+    final bottomY = (screenHeight - entityHeight + bottomMargin).clamp(
+      0.0,
+      screenHeight - entityHeight,
+    );
     final entity = MascotEntity(
       x: x,
-      y: -entityHeight,
+      y: spawnAtBottom ? bottomY : -entityHeight,
       speed: _randomSpeed(),
       signalDir: signalDir,
       facingLeft: _rng.nextBool(),
-      isDropping: true,
+      isDropping: !spawnAtBottom,
       dropVelX: (_rng.nextDouble() - 0.5) * 6.0,
       dropVelY: 0,
       reverseCountdown: _randomReverseDelay(),
@@ -322,23 +328,27 @@ class SwarmSimulation extends ChangeNotifier {
   // --- Random value generators ---
 
   double _randomSpeed() {
-    return config.speedMin + _rng.nextDouble() * (config.speedMax - config.speedMin);
+    return config.speedMin +
+        _rng.nextDouble() * (config.speedMax - config.speedMin);
   }
 
   int _randomReverseDelay() {
-    final ms = config.reverseDelayMinMs +
+    final ms =
+        config.reverseDelayMinMs +
         _rng.nextInt(config.reverseDelayMaxMs - config.reverseDelayMinMs + 1);
     return ms ~/ 33; // Convert to ticks
   }
 
   int _randomSparkleDelay() {
-    final ms = config.sparkleDelayMinMs +
+    final ms =
+        config.sparkleDelayMinMs +
         _rng.nextInt(config.sparkleDelayMaxMs - config.sparkleDelayMinMs + 1);
     return ms ~/ 33;
   }
 
   int _randomArmDelay() {
-    final ms = config.armDelayMinMs +
+    final ms =
+        config.armDelayMinMs +
         _rng.nextInt(config.armDelayMaxMs - config.armDelayMinMs + 1);
     return ms ~/ 33;
   }

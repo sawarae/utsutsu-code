@@ -168,7 +168,12 @@ class TtsService {
         r"(New-Object System.Media.SoundPlayer($env:MASCOT_WAV)).PlaySync()",
       ], environment: {'MASCOT_WAV': path});
     } else {
-      await Process.run('aplay', [path]);
+      // Linux: use aplay (requires alsa-utils package)
+      final result = await Process.run('aplay', [path]);
+      if (result.exitCode != 0) {
+        debugPrint('Failed to play audio with aplay: ${result.stderr}');
+        debugPrint('Ensure alsa-utils is installed: sudo apt-get install alsa-utils');
+      }
     }
   }
 

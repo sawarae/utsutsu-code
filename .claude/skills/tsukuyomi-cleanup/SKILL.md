@@ -1,7 +1,6 @@
 ---
 name: tsukuyomi-cleanup
 description: つくよみちゃんTTS・マスコット関連リソースのクリーンアップ
-user_invocable: true
 ---
 
 # /tsukuyomi-cleanup - つくよみちゃんクリーンアップ

@@ -24,7 +24,8 @@ void main(List<String> args) async {
   // Swarm mode: fullscreen transparent overlay
   if (config.swarm) {
     final primaryDisplay = await screenRetriever.getPrimaryDisplay();
-    final screenSize = primaryDisplay.size;
+    final visiblePos = primaryDisplay.visiblePosition ?? Offset.zero;
+    final screenSize = primaryDisplay.visibleSize ?? primaryDisplay.size;
 
     final windowOptions = WindowOptions(
       size: screenSize,
@@ -43,26 +44,33 @@ void main(List<String> args) async {
         await windowManager.setMovable(false);
       }
       await windowManager.setSize(screenSize);
-      await windowManager.setPosition(Offset.zero);
+      await windowManager.setPosition(visiblePos);
       await windowManager.show();
+      if (Platform.isLinux) {
+        // Linux WMs can ignore initial placement; re-apply once after show.
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+        await windowManager.setPosition(visiblePos);
+      }
     });
 
-    runApp(MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        scaffoldBackgroundColor: Colors.transparent,
-        canvasColor: Colors.transparent,
+    runApp(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          scaffoldBackgroundColor: Colors.transparent,
+          canvasColor: Colors.transparent,
+        ),
+        home: SwarmApp(
+          signalDir: config.signalDir ?? _defaultSignalDir(),
+          config: winConfig,
+          collisionEnabled: config.collision,
+          modelsDir: config.modelsDir,
+          model: config.model,
+          screenWidth: screenSize.width,
+          screenHeight: screenSize.height,
+        ),
       ),
-      home: SwarmApp(
-        signalDir: config.signalDir ?? _defaultSignalDir(),
-        config: winConfig,
-        collisionEnabled: config.collision,
-        modelsDir: config.modelsDir,
-        model: config.model,
-        screenWidth: screenSize.width,
-        screenHeight: screenSize.height,
-      ),
-    ));
+    );
     return;
   }
 
@@ -151,10 +159,16 @@ void main(List<String> args) async {
   }
 
   // Wander mode uses a smaller window; extra width for outline dilation padding
-  final defaultWidth = config.wander ? winConfig.wanderWidth : winConfig.mainWidth;
-  final defaultHeight = config.wander ? winConfig.wanderHeight : winConfig.mainHeight;
-  final windowSize =
-      Size(config.width ?? defaultWidth, config.height ?? defaultHeight);
+  final defaultWidth = config.wander
+      ? winConfig.wanderWidth
+      : winConfig.mainWidth;
+  final defaultHeight = config.wander
+      ? winConfig.wanderHeight
+      : winConfig.mainHeight;
+  final windowSize = Size(
+    config.width ?? defaultWidth,
+    config.height ?? defaultHeight,
+  );
   final windowOptions = WindowOptions(
     size: windowSize,
     // On macOS, window_manager handles transparency via NSWindow.
@@ -192,15 +206,30 @@ void main(List<String> args) async {
       // WanderController.start() begins the drop animation.
       await windowManager.setPosition(Offset(0, -windowSize.height * 2));
     } else {
-      // Position at bottom of screen (default: left edge)
+      // Position at bottom-left of screen
       final primaryDisplay = await screenRetriever.getPrimaryDisplay();
-      final screenSize = primaryDisplay.size;
-      final x = config.offsetX ?? 0.0;
-      final y = screenSize.height - windowSize.height;
+      final visiblePos = primaryDisplay.visiblePosition ?? Offset.zero;
+      final visibleSize = primaryDisplay.visibleSize ?? primaryDisplay.size;
+      final x = visiblePos.dx + (config.offsetX ?? 0.0);
+      final y = visiblePos.dy + visibleSize.height - windowSize.height;
       await windowManager.setPosition(Offset(x, y));
     }
 
     await windowManager.show();
+
+    // Linux WMs may ignore the first move request before/at show time.
+    // Re-apply bottom-left positioning shortly after showing.
+    if (Platform.isLinux && !config.wander) {
+      final primaryDisplay = await screenRetriever.getPrimaryDisplay();
+      final visiblePos = primaryDisplay.visiblePosition ?? Offset.zero;
+      final visibleSize = primaryDisplay.visibleSize ?? primaryDisplay.size;
+      final x = visiblePos.dx + (config.offsetX ?? 0.0);
+      final y = visiblePos.dy + visibleSize.height - windowSize.height;
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      await windowManager.setPosition(Offset(x, y));
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      await windowManager.setPosition(Offset(x, y));
+    }
   });
 
   runApp(MascotApp(config: config, windowConfig: winConfig));
@@ -209,6 +238,17 @@ void main(List<String> args) async {
 String _defaultSignalDir() {
   final home =
       Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
+  if (home == null) {
+    return '.claude/utsutsu-code';
+  }
+  final claudeDir = Directory('$home/.claude');
+  final codexDir = Directory('$home/.codex');
+  if (claudeDir.existsSync()) {
+    return '$home/.claude/utsutsu-code';
+  }
+  if (codexDir.existsSync()) {
+    return '$home/.codex/utsutsu-code';
+  }
   return '$home/.claude/utsutsu-code';
 }
 
@@ -338,7 +378,11 @@ class MascotApp extends StatefulWidget {
   final _AppConfig config;
   final WindowConfig windowConfig;
 
-  const MascotApp({super.key, required this.config, required this.windowConfig});
+  const MascotApp({
+    super.key,
+    required this.config,
+    required this.windowConfig,
+  });
 
   @override
   State<MascotApp> createState() => _MascotAppState();
@@ -421,7 +465,9 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
       });
       if (_wanderChildren.length < before) {
         _persistChildPids();
-        debugPrint('Reaped dead wander children: ${before - _wanderChildren.length} removed, ${_wanderChildren.length} remaining');
+        debugPrint(
+          'Reaped dead wander children: ${before - _wanderChildren.length} removed, ${_wanderChildren.length} remaining',
+        );
       }
     });
   }
@@ -438,12 +484,14 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
       // use a different approach: check if the dismiss signal was written.
       // Fallback: use Process.run to query tasklist.
       try {
-        final result = Process.runSync(
-          'tasklist',
-          ['/FI', 'PID eq $pid', '/NH'],
-        );
-        return RegExp(r'\b' + pid.toString() + r'\b')
-            .hasMatch(result.stdout.toString());
+        final result = Process.runSync('tasklist', [
+          '/FI',
+          'PID eq $pid',
+          '/NH',
+        ]);
+        return RegExp(
+          r'\b' + pid.toString() + r'\b',
+        ).hasMatch(result.stdout.toString());
       } catch (_) {
         return true; // Assume alive on error to avoid premature reaping
       }
@@ -504,6 +552,17 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
   static String _defaultSignalDir() {
     final home =
         Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
+    if (home == null) {
+      return '.claude/utsutsu-code';
+    }
+    final claudeDir = Directory('$home/.claude');
+    final codexDir = Directory('$home/.codex');
+    if (claudeDir.existsSync()) {
+      return '$home/.claude/utsutsu-code';
+    }
+    if (codexDir.existsSync()) {
+      return '$home/.codex/utsutsu-code';
+    }
     return '$home/.claude/utsutsu-code';
   }
 
@@ -552,8 +611,9 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
             final name = p.basename(entity.path);
             if (!name.startsWith('task-')) continue;
 
-            final hasDismiss =
-                File('${entity.path}/mascot_dismiss').existsSync();
+            final hasDismiss = File(
+              '${entity.path}/mascot_dismiss',
+            ).existsSync();
             final isTracked = knownSignalDirs.contains(entity.path);
 
             // Delete if dismissed or not tracked by any active wander child
@@ -632,7 +692,12 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
   void _processSpawnFile(File file) {
     // In swarm mode, don't consume the signal — just ensure the overlay
     // is running and let it handle all spawn signals directly.
-    if (!Platform.isWindows && _wc.maxChildren > _wc.swarmThreshold) {
+    // Swarm overlay is not yet supported on Windows (fullscreen transparent
+    // overlay requires additional DWM/layered-window work), so always use
+    // individual wander child processes there.
+    // Linux swarm overlay currently captures clicks across the entire screen.
+    // Keep Linux on per-child wander windows unless --swarm is explicitly used.
+    if (!Platform.isWindows && !Platform.isLinux && _wc.maxChildren > _wc.swarmThreshold) {
       if (_swarmOverlay == null) {
         _launchSwarmOverlay('blend_shape_mini');
       }
@@ -792,25 +857,25 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
   void _launchSwarmOverlay(String model) {
     final exe = Platform.resolvedExecutable;
     final parentDir = widget.config.signalDir ?? _defaultSignalDir();
-    final args = [
-      '--swarm',
-      '--signal-dir', parentDir,
-      '--model', model,
-    ];
+    final args = ['--swarm', '--signal-dir', parentDir, '--model', model];
     if (widget.config.modelsDir != null) {
       args.addAll(['--models-dir', widget.config.modelsDir!]);
     }
-    Process.start(exe, args, mode: ProcessStartMode.detached).then((process) {
-      _swarmOverlay = _WanderChild(pid: process.pid, signalDir: parentDir);
-      debugPrint('Launched swarm overlay: pid=${process.pid}');
-    }).catchError((e) {
-      debugPrint('Failed to launch swarm overlay: $e');
-    });
+    Process.start(exe, args, mode: ProcessStartMode.detached)
+        .then((process) {
+          _swarmOverlay = _WanderChild(pid: process.pid, signalDir: parentDir);
+          debugPrint('Launched swarm overlay: pid=${process.pid}');
+        })
+        .catchError((e) {
+          debugPrint('Failed to launch swarm overlay: $e');
+        });
   }
 
   void _spawnWanderProcess(String signalDir, String model) {
     if (_wanderChildren.length >= _wc.maxChildren) {
-      debugPrint('Max wander children reached (${_wc.maxChildren}), skipping spawn');
+      debugPrint(
+        'Max wander children reached (${_wc.maxChildren}), skipping spawn',
+      );
       return;
     }
 
@@ -818,8 +883,10 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     final args = [
       '--wander',
       '--no-outline',
-      '--signal-dir', signalDir,
-      '--model', model,
+      '--signal-dir',
+      signalDir,
+      '--model',
+      model,
     ];
     // Pass models dir if specified
     if (widget.config.modelsDir != null) {
@@ -828,15 +895,24 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
     // Use the exe's directory as working directory so the child can find
     // its data/ folder (Flutter assets, config files, etc.).
     final exeDir = File(exe).parent.path;
-    Process.start(exe, args,
-        mode: ProcessStartMode.detached,
-        workingDirectory: exeDir).then((process) {
-      _wanderChildren.add(_WanderChild(pid: process.pid, signalDir: signalDir));
-      _persistChildPids();
-      debugPrint('Spawned wander mascot: pid=${process.pid} (${_wanderChildren.length}/${_wc.maxChildren})');
-    }).catchError((e) {
-      debugPrint('Failed to spawn wander mascot: $e');
-    });
+    Process.start(
+          exe,
+          args,
+          mode: ProcessStartMode.detached,
+          workingDirectory: exeDir,
+        )
+        .then((process) {
+          _wanderChildren.add(
+            _WanderChild(pid: process.pid, signalDir: signalDir),
+          );
+          _persistChildPids();
+          debugPrint(
+            'Spawned wander mascot: pid=${process.pid} (${_wanderChildren.length}/${_wc.maxChildren})',
+          );
+        })
+        .catchError((e) {
+          debugPrint('Failed to spawn wander mascot: $e');
+        });
   }
 
   void _removeChildBySignalDir(String signalDir) {
@@ -963,7 +1039,8 @@ class _MascotAppState extends State<MascotApp> with WindowListener {
                 key: ValueKey(_children[i].signalDir),
                 controller: _children[i].controller,
                 outlineEnabled: widget.config.outline,
-                onDismissComplete: () => _removeChildBySignalDir(_children[i].signalDir),
+                onDismissComplete: () =>
+                    _removeChildBySignalDir(_children[i].signalDir),
               ),
             ),
         ],

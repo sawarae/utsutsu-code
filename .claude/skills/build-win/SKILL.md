@@ -1,7 +1,6 @@
 ---
 name: build-win
 description: Windows配布用zipビルド (exe + モデル + emotions)
-user_invocable: true
 ---
 
 # /build-win - Windows リリースビルド

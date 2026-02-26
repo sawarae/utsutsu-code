@@ -1,7 +1,6 @@
 ---
 name: mascot-test
 description: マスコットの口パク・吹き出し・感情表現をテスト（TTS不要）
-user_invocable: true
 ---
 
 # /mascot-test - マスコット表示テスト
