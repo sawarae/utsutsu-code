@@ -10,18 +10,23 @@ class MascotController extends ChangeNotifier {
   final String _signalPath;
   final String _listeningPath;
   final String _dismissPath;
+  final String _paymentRequestPath;
   late final ModelConfig _modelConfig;
 
   bool _isSpeaking = false;
   bool _isListening = false;
   bool _directExpression = false;
   bool _dismissed = false;
+  bool _paymentRequested = false;
   String _message = '';
   String? _currentEmotion;
   Map<String, double> _wanderOverrides = {};
 
   /// True when a dismiss signal has been received.
   bool get isDismissed => _dismissed;
+
+  /// True when a payment/limit request signal has been received.
+  bool get isPaymentRequested => _paymentRequested;
 
   late final Map<String, double> _parameters;
 
@@ -58,6 +63,7 @@ class MascotController extends ChangeNotifier {
       : _signalPath = '$dir/mascot_speaking',
         _listeningPath = '$dir/mascot_listening',
         _dismissPath = '$dir/mascot_dismiss',
+        _paymentRequestPath = '$dir/payment_request',
         _pollIntervalMs = pollIntervalMs,
         _mouthAnimationMs = mouthAnimationMs {
     _modelConfig = ModelConfig.fromEnvironment(
@@ -73,6 +79,7 @@ class MascotController extends ChangeNotifier {
   MascotController.withConfig(this._signalPath, ModelConfig config, {int pollIntervalMs = 100})
       : _listeningPath = '${File(_signalPath).parent.path}/mascot_listening',
         _dismissPath = '${File(_signalPath).parent.path}/mascot_dismiss',
+        _paymentRequestPath = '${File(_signalPath).parent.path}/payment_request',
         _pollIntervalMs = pollIntervalMs,
         _mouthAnimationMs = 150 {
     _modelConfig = config;
@@ -107,6 +114,25 @@ class MascotController extends ChangeNotifier {
       return;
     }
 
+    // Check payment request signal (one-shot: consume file on detection)
+    if (!_paymentRequested && !_isSpeaking) {
+      final paymentFile = File(_paymentRequestPath);
+      if (paymentFile.existsSync()) {
+        _paymentRequested = true;
+        try {
+          final content = paymentFile.readAsStringSync().trim();
+          _parseSignalContent(content);
+        } catch (_) {
+          _message = '';
+          _setEmotion('Trouble');
+        }
+        _isSpeaking = true;
+        _startMouthAnimation();
+        notifyListeners();
+        return;
+      }
+    }
+
     // Skip signal file polling while a direct expression is active
     if (_directExpression) return;
 
@@ -122,7 +148,7 @@ class MascotController extends ChangeNotifier {
         _setEmotion(null);
       }
       _startMouthAnimation();
-    } else if (!speaking && _isSpeaking) {
+    } else if (!speaking && _isSpeaking && !_paymentRequested) {
       _isSpeaking = false;
       _stopMouthAnimation();
       _setEmotion(null);
@@ -279,7 +305,7 @@ class MascotController extends ChangeNotifier {
 
   /// Remove stale signal files on shutdown.
   void _cleanup() {
-    for (final path in [_signalPath, _listeningPath, _dismissPath]) {
+    for (final path in [_signalPath, _listeningPath, _dismissPath, _paymentRequestPath]) {
       try {
         final file = File(path);
         if (file.existsSync()) file.deleteSync();

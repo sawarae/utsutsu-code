@@ -1,6 +1,6 @@
 ---
 name: mascot-subagent-test
-description: hook経由の子マスコットspawn/dismissテスト
+description: 子マスコットのスポーン・サブエージェントTTS・ディスミスの統合フローをテストする
 user_invocable: true
 ---
 

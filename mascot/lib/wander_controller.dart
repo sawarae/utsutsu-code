@@ -27,6 +27,8 @@ class WanderController extends ChangeNotifier {
   // --- Movement state ---
   double _x = 0;
   double _y = 0;
+  double _screenOriginX = 0;
+  double _screenOriginY = 0;
   double _screenWidth = 1920;
   double _screenHeight = 1080;
   bool _facingLeft = false;
@@ -77,7 +79,8 @@ class WanderController extends ChangeNotifier {
 
   // --- Public getters ---
   bool get facingLeft => _facingLeft;
-  double get bounceOffset => _isPaused ? 0 : -config.bounceHeight * sin(_bouncePhase);
+  double get bounceOffset =>
+      _isPaused ? 0 : -config.bounceHeight * sin(_bouncePhase);
   bool get sparklesActive => _sparklesActive;
   String get armState => _armState;
   bool get isPaused => _isPaused;
@@ -137,20 +140,42 @@ class WanderController extends ChangeNotifier {
   Future<void> start() async {
     // Determine screen dimensions
     final display = await screenRetriever.getPrimaryDisplay();
-    _screenWidth = display.size.width;
-    _screenHeight = display.size.height;
+    final visiblePos = display.visiblePosition ?? Offset.zero;
+    final visibleSize = display.visibleSize ?? display.size;
+    _screenOriginX = visiblePos.dx;
+    _screenOriginY = visiblePos.dy;
+    _screenWidth = visibleSize.width;
+    _screenHeight = visibleSize.height;
 
     // Start at a random X within the screen
     _x = _rng.nextDouble() * (_screenWidth - windowWidth);
     _facingLeft = _rng.nextBool();
 
-    // Start above the screen and drop down
-    _y = -windowHeight;
-    _isPaused = true;
-    await windowManager.setPosition(Offset(_x, _y));
+    // Linux: show child mascot at the bottom immediately so spawned
+    // subagent mascots are visible near the taskbar from the start.
+    if (Platform.isLinux) {
+      _y = _bottomY();
+      _isPaused = false;
+      await windowManager.setPosition(
+        Offset(_screenOriginX + _x, _screenOriginY + _y),
+      );
+      _bounceTicker.start();
+      _moveTimer = Timer.periodic(
+        const Duration(milliseconds: 33),
+        (_) => _tick(),
+      );
+      _scheduleReverse();
+    } else {
+      // Start above the screen and drop down
+      _y = -windowHeight;
+      _isPaused = true;
+      await windowManager.setPosition(
+        Offset(_screenOriginX + _x, _screenOriginY + _y),
+      );
 
-    // Drop entrance: gravity pulls the mascot to the bottom
-    _startDrop();
+      // Drop entrance: gravity pulls the mascot to the bottom
+      _startDrop();
+    }
 
     // Schedule sparkle and arm switch immediately (visual-only, no movement)
     _scheduleSparkle();
@@ -167,7 +192,7 @@ class WanderController extends ChangeNotifier {
     final gravity = config.gravity;
     final bounceDamping = config.bounceDamping;
     final friction = config.friction;
-    final bottomY = _screenHeight - windowHeight + config.bottomMargin;
+    final bottomY = _bottomY();
     var bounceCount = 0;
 
     _dropTimer = Timer.periodic(const Duration(milliseconds: 33), (timer) {
@@ -215,7 +240,8 @@ class WanderController extends ChangeNotifier {
   }
 
   double _randomSpeed() {
-    return config.speedMin + _rng.nextDouble() * (config.speedMax - config.speedMin);
+    return config.speedMin +
+        _rng.nextDouble() * (config.speedMax - config.speedMin);
   }
 
   void _tick() {
@@ -249,7 +275,9 @@ class WanderController extends ChangeNotifier {
 
   void _updateWindowPosition() async {
     try {
-      await windowManager.setPosition(Offset(_x, _y));
+      await windowManager.setPosition(
+        Offset(_screenOriginX + _x, _screenOriginY + _y),
+      );
     } catch (_) {}
   }
 
@@ -266,7 +294,8 @@ class WanderController extends ChangeNotifier {
 
   void _scheduleReverse() {
     _reverseTimer?.cancel();
-    final delayMs = config.reverseDelayMinMs +
+    final delayMs =
+        config.reverseDelayMinMs +
         _rng.nextInt(config.reverseDelayMaxMs - config.reverseDelayMinMs + 1);
     _reverseTimer = Timer(Duration(milliseconds: delayMs), () {
       _startPause(goLeft: !_facingLeft);
@@ -332,18 +361,22 @@ class WanderController extends ChangeNotifier {
 
   void _scheduleSparkle() {
     _sparkleOnTimer?.cancel();
-    final delayMs = config.sparkleDelayMinMs +
+    final delayMs =
+        config.sparkleDelayMinMs +
         _rng.nextInt(config.sparkleDelayMaxMs - config.sparkleDelayMinMs + 1);
     _sparkleOnTimer = Timer(Duration(milliseconds: delayMs), () {
       _sparklesActive = true;
       notifyListeners();
 
       _sparkleOffTimer?.cancel();
-      _sparkleOffTimer = Timer(Duration(milliseconds: config.sparkleDurationMs), () {
-        _sparklesActive = false;
-        notifyListeners();
-        _scheduleSparkle();
-      });
+      _sparkleOffTimer = Timer(
+        Duration(milliseconds: config.sparkleDurationMs),
+        () {
+          _sparklesActive = false;
+          notifyListeners();
+          _scheduleSparkle();
+        },
+      );
     });
   }
 
@@ -382,10 +415,14 @@ class WanderController extends ChangeNotifier {
 
   /// Called when a native OS drag (HTCAPTION) ends on Windows.
   /// The OS moved the window, so we sync our position and apply inertia.
-  void endNativeDrag(double screenX, double screenY,
-      double velXPxPerSec, double velYPxPerSec) {
-    _x = screenX;
-    _y = screenY;
+  void endNativeDrag(
+    double screenX,
+    double screenY,
+    double velXPxPerSec,
+    double velYPxPerSec,
+  ) {
+    _x = screenX - _screenOriginX;
+    _y = screenY - _screenOriginY;
     _isDragging = false;
     _inertiaTimer?.cancel();
     _velocityX = velXPxPerSec / 30; // px/sec to px/tick (33ms)
@@ -432,11 +469,11 @@ class WanderController extends ChangeNotifier {
   void _applyInertia() {
     final friction = config.inertiaFriction;
     final gravity = config.inertiaGravity;
-    final bottomY = _screenHeight - windowHeight + config.bottomMargin;
+    final bottomY = _bottomY();
 
     // On Windows, the OS prevents the window from moving below the screen
     // edge. Use a clamped bottomY so the stop condition can be satisfied.
-    final effectiveBottomY = Platform.isWindows
+    final effectiveBottomY = (Platform.isWindows || Platform.isLinux)
         ? (_screenHeight - windowHeight).clamp(0.0, bottomY)
         : bottomY;
 
@@ -492,6 +529,15 @@ class WanderController extends ChangeNotifier {
 
   // --- Collision detection ---
 
+  double _bottomY() {
+    final raw = _screenHeight - windowHeight + config.bottomMargin;
+    // Linux/Windows window managers usually clamp to visible screen bounds.
+    if (Platform.isLinux || Platform.isWindows) {
+      return raw.clamp(0.0, _screenHeight - windowHeight);
+    }
+    return raw;
+  }
+
   /// Write this mascot's position to a signal file for siblings to read.
   /// Skips write if position hasn't changed significantly since last broadcast.
   void _broadcastPosition() {
@@ -500,16 +546,21 @@ class WanderController extends ChangeNotifier {
     // Skip if position hasn't moved enough
     final dx = (_x - _lastBroadcastX).abs();
     final dy = (_y - _lastBroadcastY).abs();
-    if (dx < config.broadcastThreshold && dy < config.broadcastThreshold) return;
+    if (dx < config.broadcastThreshold && dy < config.broadcastThreshold)
+      return;
     _writingPosition = true;
     _lastBroadcastX = _x;
     _lastBroadcastY = _y;
     final payload = '{"x":$_x,"y":$_y,"w":$windowWidth,"h":$windowHeight}';
-    final envelope = '{"version":"1","type":"mascot.position","payload":$payload}';
+    final envelope =
+        '{"version":"1","type":"mascot.position","payload":$payload}';
     File('$dir/mascot_position')
         .writeAsString(envelope)
         .then((_) => _writingPosition = false)
-        .catchError((_) { _writingPosition = false; return File(''); });
+        .catchError((_) {
+          _writingPosition = false;
+          return File('');
+        });
   }
 
   /// Scan sibling signal directories for position files and resolve collisions.
@@ -522,24 +573,28 @@ class WanderController extends ChangeNotifier {
         if (entity is! Directory) continue;
         // Normalize path separators for comparison (Windows listSync uses
         // backslashes but signalDir may contain forward slashes).
-        if (entity.path.replaceAll(r'\', '/') == dir.replaceAll(r'\', '/')) continue;
+        if (entity.path.replaceAll(r'\', '/') == dir.replaceAll(r'\', '/'))
+          continue;
         final posFile = File('${entity.path}/mascot_position');
         if (!posFile.existsSync()) continue;
-        posFile.readAsString().then((content) {
-          try {
-            final json = jsonDecode(content) as Map<String, dynamic>;
-            // Unwrap envelope v1 or use legacy format directly
-            final data = json.containsKey('version')
-                ? (json['payload'] as Map<String, dynamic>? ?? {})
-                : json;
-            resolveCollision(
-              (data['x'] as num).toDouble(),
-              (data['y'] as num).toDouble(),
-              (data['w'] as num?)?.toDouble() ?? 150,
-              (data['h'] as num?)?.toDouble() ?? 350,
-            );
-          } catch (_) {}
-        }).catchError((_) {});
+        posFile
+            .readAsString()
+            .then((content) {
+              try {
+                final json = jsonDecode(content) as Map<String, dynamic>;
+                // Unwrap envelope v1 or use legacy format directly
+                final data = json.containsKey('version')
+                    ? (json['payload'] as Map<String, dynamic>? ?? {})
+                    : json;
+                resolveCollision(
+                  (data['x'] as num).toDouble(),
+                  (data['y'] as num).toDouble(),
+                  (data['w'] as num?)?.toDouble() ?? 150,
+                  (data['h'] as num?)?.toDouble() ?? 350,
+                );
+              } catch (_) {}
+            })
+            .catchError((_) {});
       }
     } catch (_) {}
   }
@@ -555,7 +610,8 @@ class WanderController extends ChangeNotifier {
     // Only displace once per collision cooldown period.
     final now = DateTime.now();
     if (_lastDisplacementTime != null &&
-        now.difference(_lastDisplacementTime!) < Duration(seconds: config.collisionCooldownSeconds)) {
+        now.difference(_lastDisplacementTime!) <
+            Duration(seconds: config.collisionCooldownSeconds)) {
       return false;
     }
 
@@ -586,7 +642,8 @@ class WanderController extends ChangeNotifier {
 
       // Fire collision callback with cooldown
       if (_lastCollisionTime == null ||
-          now.difference(_lastCollisionTime!) > Duration(seconds: config.collisionCooldownSeconds)) {
+          now.difference(_lastCollisionTime!) >
+              Duration(seconds: config.collisionCooldownSeconds)) {
         _lastCollisionTime = now;
         onCollision?.call();
       }
@@ -600,7 +657,8 @@ class WanderController extends ChangeNotifier {
 
   void _scheduleArmSwitch() {
     _armTimer?.cancel();
-    final delayMs = config.armDelayMinMs +
+    final delayMs =
+        config.armDelayMinMs +
         _rng.nextInt(config.armDelayMaxMs - config.armDelayMinMs + 1);
     _armTimer = Timer(Duration(milliseconds: delayMs), () {
       final states = ['empty', 'broom', 'luggage'];

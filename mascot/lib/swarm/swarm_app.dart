@@ -82,6 +82,7 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
       entityHeight: _entityHeight,
       collisionEnabled: widget.collisionEnabled,
       bottomMargin: widget.config.swarmBottomMargin,
+      spawnAtBottom: Platform.isLinux,
     );
 
     _spriteCache = SpriteCache();
@@ -119,7 +120,9 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
     }
 
     // Signal native window visibility
-    _windowReadyChannel.invokeMethod('show');
+    if (Platform.isMacOS) {
+      _windowReadyChannel.invokeMethod('show');
+    }
 
     // Start entity rect updates for click-through
     _startEntityRectUpdates();
@@ -142,12 +145,14 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
     if (!Platform.isMacOS) return;
     final rects = _simulation.entities
         .where((e) => !e.dismissed)
-        .map((e) => {
-              'x': e.x,
-              'y': e.y + e.bounceOffset,
-              'w': _entityWidth,
-              'h': _entityHeight,
-            })
+        .map(
+          (e) => {
+            'x': e.x,
+            'y': e.y + e.bounceOffset,
+            'w': _entityWidth,
+            'h': _entityHeight,
+          },
+        )
         .toList();
     _swarmModeChannel.invokeMethod('updateEntityRects', rects);
   }
@@ -504,7 +509,10 @@ class _SwarmAppState extends State<SwarmApp> with TickerProviderStateMixin {
                         'Screen: ${widget.screenWidth.toInt()}x${widget.screenHeight.toInt()}\n'
                         'LOD0: $_activeEntityIndex\n'
                         '$positions',
-                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                        ),
                       ),
                     );
                   },

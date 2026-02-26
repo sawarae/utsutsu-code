@@ -64,6 +64,30 @@ git tag v0.XX feature/win && git push origin v0.XX
 `~/.claude/utsutsu-code/` に置かれる:
 - `mascot_speaking` — TTSフックが書き込み、マスコットが読む（JSON: message + emotion）
 - `mascot_listening` — 音声入力が書き込み、マスコットが読む
+- `payment_request` — リミット通知フックが書き込み、マスコットが課金をお願いする（ワンショット）
+
+### 課金お願い通知（payment_request）
+
+クロードのリミットが近づいたときに、つくよみちゃんが困り顔で課金をお願いする。
+
+```bash
+# 直接トリガー
+python3 .claude/hooks/payment_request.py --message "リミットが近づいてます…"
+
+# 環境変数で自動判定（80%以上で発火）
+CLAUDE_USAGE_PERCENT=85 python3 .claude/hooks/payment_request.py
+
+# しきい値を変更
+python3 .claude/hooks/payment_request.py --check-percent 90
+
+# シグナルクリア
+python3 .claude/hooks/payment_request.py --clear
+```
+
+- シグナルファイル: `~/.claude/utsutsu-code/payment_request`
+- 感情: Trouble（困り顔）
+- ワンショット: 一度表示したら再トリガーしない（マスコット再起動までリセットされない）
+- 発話中はスキップ（通常の発話を妨げない）
 
 ## ファイル配置
 
@@ -75,6 +99,11 @@ git tag v0.XX feature/win && git push origin v0.XX
 | `.claude/skills/*` | `~/.claude/skills/*` |
 
 セットアップ: `/tsukuyomi-setup` / クリーンアップ: `/tsukuyomi-cleanup`
+
+## 開発
+mac / windows / linux対応。
+開発前に現在のosを取得してからプラットフォームに合わせて開発する。
+他のプラットフォームへのデグレを避ける。
 
 ## Testing Protocol
 
@@ -93,10 +122,30 @@ cd mascot && flutter test
 ### L2: ビルド確認
 
 ```bash
-cd mascot && flutter build macos
+cd mascot && flutter build macos   # macOS
+cd mascot && flutter build linux   # Linux（xvfb-run 不要）
 ```
 
 - コンパイルエラーがないことを確認
+
+### リナックステスト環境セットアップ
+
+ヘッドレス環境（CI、リモートサーバー等）でフラッターテスト・ビルドを行うためのセットアップ。
+
+```bash
+# 一括セットアップ（フラッター SDK + 依存パッケージ）
+bash scripts/setup_flutter_linux.sh
+
+# 手動セットアップ
+sudo apt-get install -y xvfb libgtk-3-dev clang cmake ninja-build pkg-config libgl1-mesa-dev
+# フラッター SDK は ~/flutter にインストール（バージョン 3.38.7 / ダート 3.10.7）
+export PATH="$HOME/flutter/bin:$PATH"
+flutter config --enable-linux-desktop
+```
+
+- L1（ユニットテスト）はディスプレイ不要: `flutter test`
+- L2（ビルド）は `libgtk-3-dev` が必要: `flutter build linux`
+- `xvfb-run` はビルド時にディスプレイが必要な場合のみ使用
 
 ### L3: 実行テスト（UI変更時は必須）
 
