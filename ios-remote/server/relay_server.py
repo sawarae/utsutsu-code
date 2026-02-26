@@ -142,19 +142,32 @@ class SessionWatcher:
 
 
 def write_tts_signal(message: str, emotion: str = "Gentle") -> bool:
-    """Write to mascot_speaking signal file (same as mascot_tts.py)."""
+    """Write to mascot_speaking signal file using envelope v1 format."""
     try:
         SIGNAL_DIR.mkdir(parents=True, exist_ok=True)
-        payload = json.dumps({"message": message, "emotion": emotion},
-                             ensure_ascii=False)
+        envelope = json.dumps({
+            "version": "1",
+            "type": "mascot.speech",
+            "payload": {"message": message, "emotion": emotion},
+        }, ensure_ascii=False)
         tmp = MASCOT_SPEAKING.with_suffix(".tmp")
-        tmp.write_text(payload, encoding="utf-8")
+        tmp.write_text(envelope, encoding="utf-8")
         tmp.rename(MASCOT_SPEAKING)
         log.info("TTS signal written: [%s] %s", emotion, message)
+        # Schedule cleanup so the signal doesn't persist indefinitely
+        asyncio.get_event_loop().call_later(10.0, _clear_tts_signal)
         return True
     except Exception as e:
         log.error("Failed to write TTS signal: %s", e)
         return False
+
+
+def _clear_tts_signal():
+    """Remove stale mascot_speaking signal file."""
+    try:
+        MASCOT_SPEAKING.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -320,7 +333,7 @@ watcher = SessionWatcher(SESSION_LOG)
 
 async def main():
     port = int(os.environ.get("RELAY_PORT", DEFAULT_PORT))
-    host = os.environ.get("RELAY_HOST", "0.0.0.0")
+    host = os.environ.get("RELAY_HOST", "127.0.0.1")
 
     watcher.load_history()
     log.info("Session log: %s (%d lines in history)", SESSION_LOG, len(watcher.history))

@@ -25,7 +25,21 @@ import random
 import sys
 from pathlib import Path
 
-SIGNAL_DIR = os.path.expanduser("~/.claude/utsutsu-code")
+
+def _resolve_agent_home():
+    """Resolve agent home directory with .claude preferred over .codex."""
+    home = os.path.expanduser("~")
+    claude = os.path.join(home, ".claude")
+    codex = os.path.join(home, ".codex")
+    if os.path.isdir(claude):
+        return claude
+    if os.path.isdir(codex):
+        return codex
+    return claude
+
+
+AGENT_HOME = _resolve_agent_home()
+SIGNAL_DIR = os.path.join(AGENT_HOME, "utsutsu-code")
 PAYMENT_REQUEST_FILE = os.path.join(SIGNAL_DIR, "payment_request")
 
 # Default threshold: trigger at 80% usage

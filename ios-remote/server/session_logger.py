@@ -68,12 +68,16 @@ def main():
                                  "tts_request", "raw"],
                         help="Type of session event")
     parser.add_argument("--content", default="", help="Event content text")
+    parser.add_argument("--content-env", default="",
+                        help="Read content from this environment variable (shell-safe)")
     parser.add_argument("--stdin", action="store_true",
                         help="Read content from stdin instead of --content")
     args = parser.parse_args()
 
     content = args.content
-    if args.stdin:
+    if args.content_env:
+        content = os.environ.get(args.content_env, "")
+    elif args.stdin:
         content = sys.stdin.read()
 
     if not content.strip():

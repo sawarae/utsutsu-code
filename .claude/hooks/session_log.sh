@@ -46,7 +46,7 @@ except:
     fi
 
     if [ -n "$SUMMARY" ]; then
-        python3 "$LOGGER" --kind tool_call --content "[$TOOL_NAME] $SUMMARY" &
+        CONTENT="[$TOOL_NAME] $SUMMARY" python3 "$LOGGER" --kind tool_call --content-env CONTENT &
     else
         python3 "$LOGGER" --kind tool_call --content "[$TOOL_NAME]" &
     fi
