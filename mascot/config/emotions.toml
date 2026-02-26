@@ -124,6 +124,18 @@ EyeType = 0.333          # SlightlyNarrow
 MouthType = 0.571        # OpenMedium
 CheekType = 0.333        # Blush
 
+# ── Payment Request (Limit Warning) ─────────────────────────
+[payment_request]
+description = "Phrases used when Claude's usage limit is approaching"
+emotion = "Trouble"
+phrases = [
+  "リミットが近づいてます…課金お願いします！",
+  "もうすぐ使えなくなっちゃいます…",
+  "あの…課金していただけると嬉しいです…",
+  "リミット間近です、プランの確認お願いします！",
+  "このままだと止まっちゃいます…！",
+]
+
 # ── Mouth Animation During Speech ────────────────────────────
 [mouth_animation]
 # Blend Shape Model: toggle MouthOpen 0↔1 every 150ms
